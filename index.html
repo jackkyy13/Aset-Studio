@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>UPAMI, Sistem Peminjaman Aset</title>
+<title>UPAMI - Sistem Peminjaman Aset</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   tailwind.config = {
@@ -49,6 +49,9 @@
   .spin-gelap { border-color:#c7d2fe; border-top-color:#4f46e5; }
   @keyframes spin { to { transform:rotate(360deg); } }
   .durasi-btn.aktif { background:#4f46e5; color:#fff; border-color:#4f46e5; }
+  .dot-live { width:9px; height:9px; border-radius:9999px; background:#10b981; box-shadow:0 0 0 0 rgba(16,185,129,.55); animation:pulse 1.6s infinite; display:inline-block; flex-shrink:0; }
+  .dot-mati { background:#94a3b8; animation:none; box-shadow:none; }
+  @keyframes pulse { 0% { box-shadow:0 0 0 0 rgba(16,185,129,.55); } 70% { box-shadow:0 0 0 8px rgba(16,185,129,0); } 100% { box-shadow:0 0 0 0 rgba(16,185,129,0); } }
 
   .modal { display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:50; padding:1rem; overflow-y:auto; }
   .modal.open { display:flex; align-items:flex-start; justify-content:center; }
@@ -330,14 +333,21 @@
  * https://script.google.com/macros/s/AKfycb.../exec
  * Selama masih kosong, aplikasi berjalan pada Mode Demo dengan
  * data contoh yang tersimpan di browser ini saja.
+ * CUKUP isi baris API_URL saja. Baris DEMO_MODE di bawah jangan
+ * diubah sama sekali, biarkan apa adanya.
  * ============================================================ */
-const API_URL = "https://script.google.com/macros/s/AKfycbxIP4JC9yMR3l-RXTbPeylWwJIYohAPYkwpVxz3DOoKYhCIP7fI6af19wSTXkaAXZIyiQ/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxtrNVgE2QUAySppzkkQvgCebpM604vYGwEvlEPsNGdmi5Bf1RvlPIlLDaNjBKBS4L5/exec";
 
 // Isi dengan alamat file logo bila sudah ada, misal logo.png
 // yang diunggah bersama file ini. Kosongkan untuk memakai monogram.
 const LOGO_URL = "";
 
-const DEMO_MODE = API_URL === "";
+// JANGAN diubah. Mode Demo aktif otomatis hanya bila API_URL masih kosong.
+const DEMO_MODE = API_URL.trim() === '';
+
+// Jeda kirim posisi dari halaman peminjam dan jeda segar data dashboard
+const INTERVAL_LACAK_MS = 30000;
+const INTERVAL_DASH_MS = 15000;
 const DEMO_KEY = 'upami_demo_v1';
 const KEY_USER = 'upami_peminjam';
 const KEY_PIN = 'upami_pin';
@@ -353,7 +363,9 @@ const state = {
   layerKantor: null,
   layerAset: null,
   overrideTarget: null,
-  gpsToken: 0
+  gpsToken: 0,
+  lacakAktif: null,
+  mapFitDone: false
 };
 
 /* ============================================================
@@ -642,6 +654,26 @@ async function demoApi(action, params, post) {
     return { ok: true, pesan: 'Pengembalian berhasil, status aset kembali Tersedia', jarak: jarak, radius: Math.round(radius), kantor_asal: { id: kantor.id, nama: kantor.nama } };
   }
 
+  if (action === 'lacak') {
+    const latL = Number(post.lat);
+    const lngL = Number(post.lng);
+    if (!post.lat || !post.lng) return { ok: false, error: 'Koordinat tidak terbaca' };
+    const a = cariAset(post.assetId);
+    if (!a) return { ok: false, error: 'Aset tidak ditemukan' };
+    if (a.status !== 'Dipinjam') return { ok: true, berhenti: true, pesan: 'Aset sudah tidak berstatus Dipinjam' };
+    const kantorL = cariKantor(a.kantor_asal);
+    a.lat_terakhir = latL;
+    a.lng_terakhir = lngL;
+    demoSimpan();
+    let jarakL = '';
+    let radiusL = '';
+    if (kantorL) {
+      jarakL = Math.round(haversine(latL, lngL, kantorL.lat, kantorL.lng));
+      radiusL = (a.radius_khusus !== '' && a.radius_khusus > 0) ? a.radius_khusus : kantorL.radius;
+    }
+    return { ok: true, jarak: jarakL, radius: radiusL, diLuarRadius: (jarakL !== '' && radiusL !== '' && jarakL > radiusL), kantor_asal: kantorL ? { id: kantorL.id, nama: kantorL.nama } : null };
+  }
+
   if (action === 'override') {
     if (String(post.pin || '') !== String(db.konfig.PIN_Admin)) return { ok: false, error: 'PIN salah.' };
     const a = cariAset(post.assetId);
@@ -749,6 +781,7 @@ async function bukaAset(id) {
   state.kantorAsal = data.kantor_asal;
   state.namaInstansi = data.nama_instansi || state.namaInstansi;
   state.noWaAdmin = data.no_wa_admin || '';
+  stopLacakJikaBeda(data.aset.id);
   applyBrand(state.namaInstansi);
   renderAset();
 }
@@ -777,6 +810,7 @@ function renderAset() {
   if (a.status === 'Dipinjam') {
     const btn = el('btn-kembalikan');
     if (btn) btn.onclick = mulaiKembalikan;
+    pasangLacak();
   }
 }
 
@@ -827,9 +861,115 @@ function htmlDipinjam() {
   return kotakWaktu +
     '<div class="rounded-xl bg-sky-50 border border-sky-200 p-3.5 text-sm text-sky-900">' +
     'Wajib Dikembalikan ke <b>' + esc(kantorNama()) + '</b></div>' +
+    '<div id="lacak-box" class="rounded-xl border border-slate-200 bg-white p-3.5"></div>' +
     '<p class="text-xs text-slate-500">Pengembalian divalidasi lewat GPS. Pastikan Anda sudah berada di lingkungan ' + esc(kantorNama()) + ' sebelum menekan tombol di bawah.</p>' +
     '<button id="btn-kembalikan" class="btn btn-primary w-full !py-3 text-base">Kembalikan Barang Ini</button>' +
     '<div id="kembali-area"></div>';
+}
+
+/* ---------- pelacakan posisi berkala ---------- */
+
+function pasangLacak() {
+  const box = el('lacak-box');
+  if (!box || !state.aset || state.aset.status !== 'Dipinjam') return;
+  if (state.lacakAktif && state.lacakAktif.id === state.aset.id) {
+    tampilLacakStatus();
+    return;
+  }
+  box.innerHTML =
+    '<div class="flex items-center gap-2">' +
+    '<p class="text-xs font-bold text-slate-500 uppercase tracking-wide">Lacak Posisi</p>' +
+    '<button id="btn-lacak-mulai" class="btn-mini ml-auto">Mulai Lacak</button></div>' +
+    '<p class="text-sm text-slate-600 mt-1.5">Nyalakan pelacakan supaya pengurus bisa melihat pergerakan barang di peta secara berkala selama barang ada di tangan Anda.</p>';
+  el('btn-lacak-mulai').onclick = mulaiLacak;
+}
+
+function tampilLacakStatus() {
+  const box = el('lacak-box');
+  const sesi = state.lacakAktif;
+  if (!box || !sesi) return;
+  const gagal = sesi.ok === false;
+  box.innerHTML =
+    '<div class="flex items-center gap-2">' +
+    '<span class="dot-live' + (gagal ? ' dot-mati' : '') + '"></span>' +
+    '<p class="text-xs font-bold uppercase tracking-wide ' + (gagal ? 'text-slate-400' : 'text-emerald-700') + '">' + (gagal ? 'Mencari Sinyal GPS' : 'Lacak Aktif') + '</p>' +
+    '<button id="btn-lacak-hentikan" class="btn-mini ml-auto">Hentikan</button></div>' +
+    '<p class="text-sm text-slate-600 mt-1.5">' + esc(sesi.status) + '</p>' +
+    (sesi.diLuar ? '<p class="text-xs font-semibold text-amber-700 mt-1">Posisi saat ini di luar radius kantor asal.</p>' : '') +
+    '<p class="text-xs text-slate-400 mt-1">Posisi dikirim otomatis tiap ' + Math.round(INTERVAL_LACAK_MS / 1000) + ' detik selama halaman ini terbuka.</p>';
+  el('btn-lacak-hentikan').onclick = function () {
+    stopLacak();
+    pasangLacak();
+    toast('Pelacakan dihentikan.');
+  };
+}
+
+function mulaiLacak() {
+  const a = state.aset;
+  if (!a || a.status !== 'Dipinjam') return;
+  if (state.lacakAktif) {
+    if (state.lacakAktif.id === a.id) return;
+    stopLacak();
+  }
+  state.lacakAktif = { id: a.id, timer: null, status: 'Mengambil posisi pertama...', ok: null, diLuar: false };
+  const idRef = a.id;
+  state.lacakAktif.timer = setInterval(function () { tikLacak(idRef); }, INTERVAL_LACAK_MS);
+  tikLacak(idRef);
+  pasangLacak();
+}
+
+function stopLacak() {
+  if (state.lacakAktif && state.lacakAktif.timer) clearInterval(state.lacakAktif.timer);
+  state.lacakAktif = null;
+}
+
+function stopLacakJikaBeda(id) {
+  if (state.lacakAktif && state.lacakAktif.id !== id) stopLacak();
+}
+
+async function tikLacak(id) {
+  const sesi = state.lacakAktif;
+  if (!sesi || sesi.id !== id) return;
+  sesi.status = 'Mengambil posisi...';
+  sesi.ok = false;
+  tampilLacakStatus();
+
+  const gps = await getGps({ timeout: 15000 });
+  let masih = state.lacakAktif && state.lacakAktif.id === id && state.aset && state.aset.id === id && state.aset.status === 'Dipinjam';
+  if (!masih) return;
+  if (!gps.ok) {
+    sesi.status = gps.error + ' Sistem mencoba lagi otomatis.';
+    sesi.ok = false;
+    tampilLacakStatus();
+    return;
+  }
+
+  const res = await api('lacak', null, {
+    action: 'lacak', assetId: id,
+    lat: gps.lat, lng: gps.lng, akurasi: gps.akurasi
+  });
+  masih = state.lacakAktif && state.lacakAktif.id === id;
+  if (!masih) return;
+
+  if (res.ok && res.berhenti) {
+    stopLacak();
+    toast('Peminjaman sudah selesai, pelacakan dihentikan.');
+    if (state.aset && state.aset.id === id) bukaAset(id);
+    return;
+  }
+  if (!res.ok) {
+    sesi.status = res.error + ' Sistem mencoba lagi otomatis.';
+    sesi.ok = false;
+    tampilLacakStatus();
+    return;
+  }
+
+  const jam = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
+  sesi.ok = true;
+  sesi.diLuar = res.diLuarRadius === true;
+  sesi.status = 'Posisi terkirim ' + jam + ', akurasi ±' + Math.round(gps.akurasi) + ' m' +
+    (res.jarak !== '' ? ', jarak ke ' + esc(res.kantor_asal.nama) + ' ' + res.jarak + ' m' : '');
+  tampilLacakStatus();
 }
 
 function resetTombolKembali() {
@@ -897,6 +1037,7 @@ function renderGpsGagal(pesan) {
 }
 
 function renderSuksesKembali(res) {
+  stopLacak();
   const area = el('kembali-area');
   const btn = el('btn-kembalikan');
   if (btn) btn.remove();
@@ -1056,6 +1197,7 @@ async function submitPinjam() {
 
 function renderSuksesPinjam(res, gpsOk) {
   const a = state.aset;
+  a.status = 'Dipinjam';
   let catatanGps = '';
   if (!gpsOk) {
     catatanGps = '<div class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900 text-left">Posisi GPS tidak terbaca saat pengambilan, pinjaman tetap diproses. Pastikan izin lokasi aktif agar pengembalian lancar.</div>';
@@ -1069,10 +1211,12 @@ function renderSuksesPinjam(res, gpsOk) {
     '<div class="rounded-xl bg-amber-50 border border-amber-200 p-4 mt-4 text-left">' +
     '<p class="text-xs font-bold text-amber-700 uppercase tracking-wide">Pengingat Wajib</p>' +
     '<p class="text-sm text-amber-900 mt-1 font-semibold">Barang ini wajib dikembalikan ke ' + esc(res.kantor_asal ? res.kantor_asal.nama : kantorNama()) + ' paling lambat ' + fmtWib(res.estimasi_kembali) + '.</p></div>' +
+    '<div class="rounded-xl bg-emerald-50 border border-emerald-200 p-3 mt-3 text-left text-sm text-emerald-900"><span class="dot-live inline-block align-middle mr-2"></span>Pelacakan posisi langsung menyala. Biarkan halaman ini terbuka supaya pengurus bisa melihat pergerakan barang.</div>' +
     '<button id="btn-kembali-sekarang" class="btn btn-primary w-full mt-4">Kembalikan Sekarang</button>' +
     '<button id="btn-selesai" class="btn btn-ghost w-full mt-2">Selesai</button></div>';
   el('btn-kembali-sekarang').onclick = function () { bukaAset(state.aset.id); };
   el('btn-selesai').onclick = function () { bukaAset(state.aset.id); };
+  mulaiLacak();
   toast('Pinjaman berhasil dicatat');
 }
 
@@ -1271,6 +1415,7 @@ function renderAktif() {
       '<p class="font-bold text-slate-900">' + esc(a.id) + ' <span class="font-normal text-slate-500 text-sm">' + esc(a.nama) + '</span></p>' +
       '<p class="text-sm text-slate-600 mt-0.5">' + esc(a.peminjam || '') + ' , ' + esc(a.wa || 'nomor tidak tercatat') + '</p>' +
       '<p class="text-xs ' + (ovd ? 'text-red-600 font-bold' : 'text-slate-500') + ' mt-0.5">Batas kembali ' + fmtWib(a.estimasi) + ' , ' + sisaWaktu(a.estimasi) + '</p>' +
+      '<p class="text-xs mt-0.5 ' + (a.lat_terakhir !== '' ? 'text-emerald-700 font-semibold' : 'text-slate-400') + '">' + (a.lat_terakhir !== '' ? 'Posisi terpantau di peta' : 'Posisi belum pernah tercatat') + '</p>' +
       '</div>' +
       '<div class="flex gap-2 shrink-0">' +
       (a.wa ? '<a href="https://wa.me/' + esc(a.wa) + '?text=' + encodeURIComponent(teksWa) + '" target="_blank" rel="noopener" class="btn btn-ghost text-sm">Ingatkan WA</a>' : '') +
@@ -1322,17 +1467,22 @@ function renderMap() {
     if (a.status !== 'Dipinjam') return;
     if (a.lat_terakhir === '' || a.lng_terakhir === '') return;
     const kantor = kantorById(a.kantor_asal);
+    let teksJarak = '';
+    if (kantor && kantor.lat !== '' && kantor.lng !== '') {
+      teksJarak = '<br>Jarak ke kantor ' + Math.round(haversine(a.lat_terakhir, a.lng_terakhir, kantor.lat, kantor.lng)) + ' m';
+    }
     const labelPopup = '<b>' + esc(a.id) + ' , ' + esc(a.nama) + '</b><br>Kantor asal ' + esc(kantor ? kantor.nama : a.kantor_asal) +
-      '<br>Peminjam ' + esc(a.peminjam || '') + '<br>Batas kembali ' + fmtWib(a.estimasi);
+      '<br>Peminjam ' + esc(a.peminjam || '') + '<br>Batas kembali ' + fmtWib(a.estimasi) + teksJarak;
     L.circleMarker([a.lat_terakhir, a.lng_terakhir], { radius: 7, color: '#d97706', weight: 2, fillColor: '#f59e0b', fillOpacity: 1 })
-      .bindTooltip(a.id + ' , asal ' + (kantor ? kantor.nama : a.kantor_asal))
+      .bindTooltip(a.id + ' , posisi terkini')
       .bindPopup(labelPopup)
       .addTo(state.layerAset);
     batas.push([a.lat_terakhir, a.lng_terakhir]);
   });
 
-  if (batas.length) {
+  if (batas.length && !state.mapFitDone) {
     state.map.fitBounds(batas, { padding: [30, 30], maxZoom: 15 });
+    state.mapFitDone = true;
   }
   setTimeout(function () { state.map.invalidateSize(); }, 250);
 }
@@ -1514,6 +1664,9 @@ function generateQr() {
 
 function init() {
   if (DEMO_MODE) el('banner-demo').classList.remove('hidden');
+  if (!DEMO_MODE && API_URL.indexOf('/exec') === -1) {
+    toast('URL API biasanya berakhiran /exec. Periksa kembali konstanta API_URL.', 'kuning');
+  }
   applyBrand(state.namaInstansi);
 
   el('btn-masuk').onclick = cobaMasuk;
@@ -1557,7 +1710,7 @@ function init() {
 
   setInterval(function () {
     if (state.pin && !el('dash-content').classList.contains('hidden')) muatDashboard(state.pin, true);
-  }, 60000);
+  }, INTERVAL_DASH_MS);
 
   const url = new URL(location.href);
   const idAset = url.searchParams.get('asset');
