@@ -1,0 +1,1580 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UPAMI, Sistem Peminjaman Aset</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: { fontFamily: { sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'] } } }
+  };
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+  body { font-family: 'Plus Jakarta Sans', Inter, system-ui, sans-serif; }
+
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:.4rem; font-weight:600; border-radius:.6rem; transition:all .15s; cursor:pointer; border:none; }
+  .btn:disabled { opacity:.55; cursor:not-allowed; }
+  .btn-primary { background:#4f46e5; color:#fff; padding:.6rem 1rem; }
+  .btn-primary:hover:not(:disabled) { background:#4338ca; }
+  .btn-ghost { background:#fff; color:#334155; border:1px solid #cbd5e1; padding:.5rem .9rem; }
+  .btn-ghost:hover:not(:disabled) { background:#f8fafc; }
+  .btn-danger { background:#dc2626; color:#fff; padding:.6rem 1rem; }
+  .btn-danger:hover:not(:disabled) { background:#b91c1c; }
+  .btn-mini { font-size:.72rem; padding:.3rem .55rem; border-radius:.45rem; border:1px solid #cbd5e1; background:#fff; color:#334155; font-weight:600; display:inline-flex; gap:.25rem; align-items:center; cursor:pointer; }
+  .btn-mini:hover { background:#f1f5f9; }
+  .btn-mini-merah { color:#b91c1c; border-color:#fca5a5; }
+  .btn-mini-merah:hover { background:#fef2f2; }
+
+  .chip { font-size:.7rem; font-weight:700; padding:.2rem .55rem; border-radius:9999px; display:inline-block; white-space:nowrap; }
+  .chip-hijau { background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; }
+  .chip-kuning { background:#fffbeb; color:#b45309; border:1px solid #fcd34d; }
+  .chip-merah { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }
+  .chip-abu { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+  .chip-biru { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+
+  .inp { width:100%; border:1px solid #cbd5e1; border-radius:.6rem; padding:.55rem .75rem; font-size:.9rem; background:#fff; color:#0f172a; }
+  .inp:focus { outline:2px solid #6366f1; border-color:#6366f1; }
+  .inp:disabled { background:#f1f5f9; color:#64748b; }
+  .lbl { font-size:.78rem; font-weight:600; color:#475569; margin-bottom:.3rem; display:block; }
+
+  .spin { display:inline-block; width:1em; height:1em; border:2px solid rgba(255,255,255,.4); border-top-color:#fff; border-radius:9999px; animation:spin .7s linear infinite; }
+  .spin-gelap { border-color:#c7d2fe; border-top-color:#4f46e5; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .durasi-btn.aktif { background:#4f46e5; color:#fff; border-color:#4f46e5; }
+
+  .modal { display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:50; padding:1rem; overflow-y:auto; }
+  .modal.open { display:flex; align-items:flex-start; justify-content:center; }
+  @media (min-width:640px) { .modal.open { align-items:center; } }
+
+  /* =========================================================
+     KARTU LABEL QR (pratinjau di layar dan hasil cetak)
+     ========================================================= */
+  .label-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(82mm, 1fr)); gap:5mm; justify-content:center; }
+  .label-card { width:90mm; height:54mm; box-sizing:border-box; border:1px solid #cbd5e1; border-radius:3mm; padding:3mm 4mm; display:flex; flex-direction:column; gap:2mm; background:#fff; overflow:hidden; break-inside:avoid; page-break-inside:avoid; }
+  .label-head { display:flex; align-items:center; gap:2.5mm; }
+  .slot-logo { position:relative; width:10mm; height:10mm; border-radius:2.5mm; background:#4338ca; color:#fff; font-weight:800; font-size:8.5pt; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }
+  .slot-logo img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#fff; display:none; }
+  .label-brand { font-weight:800; font-size:13pt; line-height:1; letter-spacing:.02em; color:#0f172a; }
+  .label-sub { font-size:6.8pt; color:#64748b; margin-top:1mm; }
+  .label-home { margin-left:auto; background:#ecfdf5; border:1px solid #10b981; color:#047857; font-weight:800; font-size:7.2pt; padding:1.5mm 2.5mm; border-radius:2mm; text-align:center; line-height:1.3; max-width:38mm; }
+  .label-body { display:flex; gap:3mm; align-items:center; flex:1; min-height:0; }
+  .label-id { font-weight:800; font-size:16pt; color:#0f172a; line-height:1.1; word-break:break-all; }
+  .label-nama { font-size:9pt; font-weight:600; color:#334155; margin-top:1mm; }
+  .label-note { font-size:6.8pt; color:#94a3b8; margin-top:1.5mm; }
+  .qr-slot { width:32mm; height:32mm; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#fff; }
+  .qr-slot canvas, .qr-slot img { width:32mm !important; height:32mm !important; }
+  #print-area { background:#fff; }
+
+  @media screen {
+    #print-area { overflow:auto; max-height:62vh; }
+  }
+  @media print {
+    body { background:#fff !important; }
+    .no-print { display:none !important; }
+    #modal-print { display:none !important; }
+    #modal-print.open { display:block !important; position:static !important; inset:auto !important; background:none !important; padding:0 !important; overflow:visible !important; }
+    #modal-print.open .panel { position:static !important; max-width:none !important; max-height:none !important; overflow:visible !important; box-shadow:none !important; border:0 !important; border-radius:0 !important; background:#fff !important; }
+    #print-area { overflow:visible !important; max-height:none !important; padding:0 !important; }
+    .label-grid { grid-template-columns:repeat(2, 1fr) !important; gap:4mm !important; justify-content:stretch !important; }
+    @page { size:A4 portrait; margin:8mm; }
+  }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-40 no-print">
+  <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+    <div class="relative w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 overflow-hidden">
+      <!-- Slot logo asli. Saat file logo sudah siap, isi konstanta LOGO_URL di bagian skrip
+           dan gambar ini akan tampil otomatis menggantikan tulisan UP tanpa merusak layout -->
+      <span id="brand-logo-fallback" class="font-extrabold text-sm tracking-tight">UP</span>
+      <img id="brand-logo" src="" alt="Logo UPAMI" class="absolute inset-0 w-full h-full object-contain bg-white" style="display:none">
+    </div>
+    <div class="min-w-0">
+      <h1 id="brand-nama" class="font-extrabold text-lg leading-tight tracking-tight text-slate-900">UPAMI</h1>
+      <p class="text-xs text-slate-500 leading-tight">Sistem Peminjaman Aset</p>
+    </div>
+    <nav class="ml-auto flex items-center gap-2">
+      <button id="btn-nav-dash" class="btn btn-ghost !py-1.5 !px-3 text-sm hidden">Dashboard</button>
+      <button id="btn-nav-aset" class="btn btn-ghost !py-1.5 !px-3 text-sm hidden">Info Barang</button>
+      <button id="btn-nav-keluar" class="btn btn-ghost !py-1.5 !px-3 text-sm hidden">Keluar</button>
+    </nav>
+  </div>
+</header>
+
+<div id="banner-demo" class="hidden no-print bg-amber-50 border-b border-amber-200 px-4 py-2 text-center text-xs sm:text-sm text-amber-800">
+  <b>Mode Demo aktif.</b> Data hanya tersimpan di browser ini dan belum terhubung Google Sheets.
+  Isi konstanta <b>API_URL</b> pada skrip dengan URL Web App GAS untuk mode produksi.
+</div>
+
+<main id="view-asset" class="hidden max-w-xl mx-auto px-4 py-6 w-full">
+  <div id="asset-box"></div>
+</main>
+
+<main id="view-dash" class="hidden max-w-5xl mx-auto px-4 py-6 w-full space-y-6">
+
+  <section id="pin-gate" class="bg-white border border-slate-200 rounded-2xl p-6 max-w-sm mx-auto mt-6 shadow-sm">
+    <h2 class="font-extrabold text-lg text-slate-900">Dashboard Pengurus</h2>
+    <p class="text-sm text-slate-500 mt-1">Masukkan PIN admin untuk membuka manajemen aset.</p>
+    <input id="input-pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN admin" class="inp mt-4 text-center tracking-[.4em] font-bold">
+    <p id="pin-error" class="hidden text-sm text-red-600 font-semibold mt-2"></p>
+    <button id="btn-masuk" class="btn btn-primary w-full mt-4">Masuk Dashboard</button>
+  </section>
+
+  <div id="dash-content" class="hidden space-y-6">
+
+    <section class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+        <p class="text-xs font-semibold text-slate-500">Total Aset</p>
+        <p id="kpi-total" class="text-3xl font-extrabold text-slate-900 mt-1">0</p>
+      </div>
+      <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+        <p class="text-xs font-semibold text-slate-500">Sedang Dipinjam</p>
+        <p id="kpi-dipinjam" class="text-3xl font-extrabold text-amber-600 mt-1">0</p>
+      </div>
+      <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+        <p class="text-xs font-semibold text-slate-500">Tersedia</p>
+        <p id="kpi-tersedia" class="text-3xl font-extrabold text-emerald-600 mt-1">0</p>
+      </div>
+      <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+        <p class="text-xs font-semibold text-slate-500">Overdue</p>
+        <p id="kpi-overdue" class="text-3xl font-extrabold text-red-600 mt-1">0</p>
+      </div>
+    </section>
+
+    <section class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm no-print">
+      <div class="flex flex-wrap items-center gap-2">
+        <select id="filter-kantor" class="inp !w-auto text-sm">
+          <option value="SEMUA">Semua Kantor</option>
+        </select>
+        <input id="cari-aset" type="search" placeholder="Cari kode, nama, atau peminjam" class="inp !w-auto text-sm flex-1 min-w-[180px]">
+        <button id="btn-refresh" class="btn btn-ghost text-sm">Muat Ulang</button>
+        <button id="btn-cetak-semua" class="btn btn-ghost text-sm">Cetak Semua QR</button>
+        <button id="btn-kantor-baru" class="btn btn-ghost text-sm">Kantor Baru</button>
+        <button id="btn-aset-baru" class="btn btn-primary text-sm">Aset Baru</button>
+      </div>
+    </section>
+
+    <section class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <h3 class="font-bold text-slate-900">Peta Sebaran Kantor dan Aset</h3>
+        <div class="flex items-center gap-3 text-xs text-slate-500">
+          <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-blue-700 inline-block"></span>Kantor dan radius</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>Aset dipinjam</span>
+        </div>
+      </div>
+      <div id="map" class="h-72 sm:h-96 rounded-xl border border-slate-200 z-0"></div>
+    </section>
+
+    <section class="bg-white border border-slate-200 rounded-2xl shadow-sm">
+      <h3 class="font-bold text-slate-900 p-4 pb-2">Daftar Aset</h3>
+      <div id="tabel-aset-wrap" class="hidden sm:block overflow-x-auto px-4 pb-4">
+        <table class="w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
+          <thead class="bg-slate-50 text-slate-600 text-left">
+            <tr>
+              <th class="px-3 py-2 border-b border-slate-200 font-semibold">Aset</th>
+              <th class="px-3 py-2 border-b border-slate-200 font-semibold">Kategori</th>
+              <th class="px-3 py-2 border-b border-slate-200 font-semibold">Kantor Asal</th>
+              <th class="px-3 py-2 border-b border-slate-200 font-semibold">Status</th>
+              <th class="px-3 py-2 border-b border-slate-200 font-semibold">Info Pinjam</th>
+              <th class="px-3 py-2 border-b border-slate-200 font-semibold no-print">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="tabel-aset"></tbody>
+        </table>
+      </div>
+      <div id="kartu-aset" class="sm:hidden px-4 pb-4 space-y-3"></div>
+    </section>
+
+    <section class="bg-white border border-slate-200 rounded-2xl shadow-sm">
+      <h3 class="font-bold text-slate-900 p-4 pb-2">Peminjaman Aktif</h3>
+      <p class="text-xs text-slate-500 px-4 pb-2">Tampilkan juga aset yang sudah melewati batas waktu. Tombol Ingatkan WA membuka WhatsApp dengan pesan siap kirim.</p>
+      <div id="daftar-aktif" class="px-4 pb-4 space-y-3"></div>
+    </section>
+
+  </div>
+</main>
+
+<!-- Modal form aset -->
+<div id="modal-aset" class="modal no-print">
+  <div class="panel bg-white rounded-2xl w-full max-w-md p-5 shadow-xl border border-slate-200">
+    <div class="flex items-center justify-between mb-3">
+      <h3 id="judul-modal-aset" class="font-extrabold text-slate-900">Aset Baru</h3>
+      <button data-tutup="modal-aset" class="btn-mini">Tutup</button>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <label class="lbl" for="aset-id">Kode Aset (ID)</label>
+        <input id="aset-id" class="inp uppercase" placeholder="misal PICKUP-02">
+        <p id="aset-id-note" class="text-xs text-slate-400 mt-1">Kode menjadi label QR. Gunakan huruf besar tanpa spasi.</p>
+      </div>
+      <div>
+        <label class="lbl" for="aset-nama">Nama Aset</label>
+        <input id="aset-nama" class="inp" placeholder="misal Mobil Pickup Operasional">
+      </div>
+      <div>
+        <label class="lbl" for="aset-kategori">Kategori</label>
+        <input id="aset-kategori" class="inp" list="daftar-kategori" placeholder="pilih atau tulis sendiri">
+        <datalist id="daftar-kategori">
+          <option value="Kendaraan"></option>
+          <option value="Audio"></option>
+          <option value="Elektronik"></option>
+          <option value="Mebel"></option>
+          <option value="Lainnya"></option>
+        </datalist>
+      </div>
+      <div>
+        <label class="lbl" for="aset-kantor">Kantor Asal (Home Base)</label>
+        <select id="aset-kantor" class="inp"></select>
+        <p id="aset-kantor-note" class="text-xs text-slate-400 mt-1">Kantor asal menentukan lokasi wajib pengembalian dan tidak bisa diganti kemudian.</p>
+      </div>
+      <div>
+        <label class="lbl" for="aset-radius">Radius Khusus (opsional, meter)</label>
+        <input id="aset-radius" type="number" min="1" class="inp" placeholder="kosongkan bila ikut radius kantor">
+        <p class="text-xs text-slate-400 mt-1">Contoh kendaraan operasional biasanya memakai radius lebih besar seperti 120 meter.</p>
+      </div>
+      <p id="modal-aset-error" class="hidden text-sm text-red-600 font-semibold"></p>
+      <button id="btn-simpan-aset" class="btn btn-primary w-full">Simpan Aset</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal form kantor -->
+<div id="modal-kantor" class="modal no-print">
+  <div class="panel bg-white rounded-2xl w-full max-w-md p-5 shadow-xl border border-slate-200">
+    <div class="flex items-center justify-between mb-3">
+      <h3 id="judul-modal-kantor" class="font-extrabold text-slate-900">Kantor Baru</h3>
+      <button data-tutup="modal-kantor" class="btn-mini">Tutup</button>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <label class="lbl" for="kantor-id">ID Kantor</label>
+        <input id="kantor-id" class="inp uppercase" placeholder="misal ASTRI">
+        <p id="kantor-id-note" class="text-xs text-slate-400 mt-1">Pakai singkatan pendek. ID tidak bisa diubah setelah tersimpan.</p>
+      </div>
+      <div>
+        <label class="lbl" for="kantor-nama">Nama Kantor</label>
+        <input id="kantor-nama" class="inp" placeholder="misal Kantor ASTRI">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="lbl" for="kantor-lat">Latitude</label>
+          <input id="kantor-lat" class="inp" placeholder="-6.2044" inputmode="decimal">
+        </div>
+        <div>
+          <label class="lbl" for="kantor-lng">Longitude</label>
+          <input id="kantor-lng" class="inp" placeholder="106.8171" inputmode="decimal">
+        </div>
+      </div>
+      <div>
+        <label class="lbl" for="kantor-radius">Radius Default Geo-Fencing (meter)</label>
+        <input id="kantor-radius" type="number" min="1" class="inp" value="50">
+      </div>
+      <p class="text-xs text-slate-500">Ambil koordinat dengan membuka Google Maps di lokasi kantor, tekan lama pada titik peta, lalu salin angka yang muncul.</p>
+      <p id="modal-kantor-error" class="hidden text-sm text-red-600 font-semibold"></p>
+      <button id="btn-simpan-kantor" class="btn btn-primary w-full">Simpan Kantor</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal force return -->
+<div id="modal-override" class="modal no-print">
+  <div class="panel bg-white rounded-2xl w-full max-w-md p-5 shadow-xl border border-slate-200">
+    <h3 class="font-extrabold text-slate-900">Force Return</h3>
+    <p class="text-sm text-slate-600 mt-2" id="override-info"></p>
+    <label class="lbl mt-3" for="override-catatan">Catatan kendala</label>
+    <input id="override-catatan" class="inp" placeholder="misal GPS peminjam rusak, sudah konfirmasi lewat telepon">
+    <p class="text-xs text-slate-500 mt-2">Tindakan ini langsung membuat aset berstatus Tersedia tanpa validasi GPS dan tercatat di Log Transaksi dengan jenis OVERRIDE_ADMIN.</p>
+    <p id="override-error" class="hidden text-sm text-red-600 font-semibold mt-2"></p>
+    <div class="flex gap-2 mt-4">
+      <button id="btn-override-batal" class="btn btn-ghost flex-1">Batal</button>
+      <button id="btn-override-proses" class="btn btn-danger flex-1">Paksa Kembali</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal pratinjau cetak label QR -->
+<div id="modal-print" class="modal">
+  <div class="panel bg-white rounded-2xl w-full max-w-3xl p-5 shadow-xl border border-slate-200">
+    <div class="flex items-center justify-between flex-wrap gap-2 mb-4 no-print">
+      <div>
+        <h3 class="font-extrabold text-slate-900">Pratinjau Label QR</h3>
+        <p id="print-count" class="text-sm text-slate-500"></p>
+      </div>
+      <div class="flex gap-2">
+        <button data-tutup="modal-print" class="btn btn-ghost text-sm">Tutup</button>
+        <button id="btn-print-go" class="btn btn-primary text-sm">Cetak Sekarang</button>
+      </div>
+    </div>
+    <p class="text-xs text-slate-500 mb-3 no-print">Di dialog cetak pilih ukuran A4, aktifkan Background graphics, lalu pilih Save as PDF atau langsung cetak ke stiker.</p>
+    <div id="print-area"><div id="print-grid" class="label-grid"></div></div>
+  </div>
+</div>
+
+<div id="toast-wrap" class="fixed bottom-4 left-0 right-0 z-[60] flex flex-col items-center gap-2 px-4 no-print"></div>
+
+<script>
+/* ============================================================
+ * KONFIGURASI UTAMA
+ * ------------------------------------------------------------
+ * API_URL diisi dengan URL Web App Google Apps Script yang
+ * berakhiran /exec. Contoh
+ * https://script.google.com/macros/s/AKfycb.../exec
+ * Selama masih kosong, aplikasi berjalan pada Mode Demo dengan
+ * data contoh yang tersimpan di browser ini saja.
+ * ============================================================ */
+const API_URL = "https://script.google.com/macros/s/AKfycbxIP4JC9yMR3l-RXTbPeylWwJIYohAPYkwpVxz3DOoKYhCIP7fI6af19wSTXkaAXZIyiQ/exec";
+
+// Isi dengan alamat file logo bila sudah ada, misal logo.png
+// yang diunggah bersama file ini. Kosongkan untuk memakai monogram.
+const LOGO_URL = "";
+
+const DEMO_MODE = API_URL === "";
+const DEMO_KEY = 'upami_demo_v1';
+const KEY_USER = 'upami_peminjam';
+const KEY_PIN = 'upami_pin';
+
+const state = {
+  pin: '',
+  namaInstansi: 'UPAMI',
+  aset: null,
+  kantorAsal: null,
+  kantor: [],
+  asetList: [],
+  map: null,
+  layerKantor: null,
+  layerAset: null,
+  overrideTarget: null,
+  gpsToken: 0
+};
+
+/* ============================================================
+ * UTILITAS UMUM
+ * ============================================================ */
+
+function el(id) { return document.getElementById(id); }
+
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+
+function tunggu(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function toast(msg, jenis) {
+  const warna = jenis === 'merah' ? 'bg-red-600' : (jenis === 'kuning' ? 'bg-amber-500' : 'bg-slate-900');
+  const d = document.createElement('div');
+  d.className = warna + ' text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg max-w-md text-center';
+  d.textContent = msg;
+  el('toast-wrap').appendChild(d);
+  setTimeout(function () { d.remove(); }, 4000);
+}
+
+function bukaModal(id) { el(id).classList.add('open'); }
+function tutupModal(id) { el(id).classList.remove('open'); }
+
+// simpan waktu sebagai teks yyyy-MM-dd HH:mm sesuai zona WIB
+function fmtTgl(d) {
+  const f = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const p = {};
+  f.formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
+  return p.year + '-' + p.month + '-' + p.day + ' ' + p.hour + ':' + p.minute;
+}
+
+// baca teks yyyy-MM-dd HH:mm sebagai waktu WIB
+function parseWib(s) {
+  if (!s) return null;
+  const t = String(s).trim().replace(' ', 'T');
+  const d = new Date(t + (t.length === 16 ? ':00' : '') + '+07:00');
+  const ms = d.getTime();
+  return isNaN(ms) ? null : ms;
+}
+
+function fmtWib(s) {
+  const t = parseWib(s);
+  if (t === null) return s || '';
+  return new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(t));
+}
+
+function teksDurasi(ms) {
+  const m = Math.floor(ms / 60000);
+  const j = Math.floor(m / 60);
+  if (j >= 24) return Math.floor(j / 24) + ' hari ' + (j % 24) + ' jam';
+  if (j >= 1) return j + ' jam ' + (m % 60) + ' menit';
+  if (m >= 1) return m + ' menit';
+  return 'kurang dari semenit';
+}
+
+function sisaWaktu(estimasi) {
+  const t = parseWib(estimasi);
+  if (t === null) return '';
+  const selisih = t - Date.now();
+  if (selisih <= 0) return 'Lewat ' + teksDurasi(-selisih);
+  return 'Tinggal ' + teksDurasi(selisih);
+}
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const rad = function (d) { return d * Math.PI / 180; };
+  const dLat = rad(lat2 - lat1);
+  const dLon = rad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// validasi nomor WhatsApp format 08xx atau 628xx, hasilnya awalan 62
+function normWa(v) {
+  let d = String(v || '').replace(/\D/g, '');
+  if (d.indexOf('0') === 0) d = '62' + d.substring(1);
+  if (d.indexOf('62') !== 0) return '';
+  if (d.length < 10 || d.length > 15) return '';
+  return d;
+}
+
+function getGps(opts) {
+  opts = opts || {};
+  return new Promise(function (resolve) {
+    if (!navigator.geolocation) {
+      resolve({ ok: false, error: 'Perangkat ini tidak mendukung GPS. Coba buka halaman lewat browser lain.' });
+      return;
+    }
+    const token = ++state.gpsToken;
+    const selesai = function (hasil) {
+      if (token === state.gpsToken) resolve(hasil);
+    };
+    const batasWaktu = opts.timeout || 20000;
+    const timer = setTimeout(function () {
+      selesai({ ok: false, error: 'Waktu tunggu GPS habis. Cari tempat terbuka lalu coba lagi.' });
+    }, batasWaktu);
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        clearTimeout(timer);
+        selesai({ ok: true, lat: pos.coords.latitude, lng: pos.coords.longitude, akurasi: pos.coords.accuracy });
+      },
+      function (err) {
+        clearTimeout(timer);
+        let pesan = 'GPS gagal terbaca. Coba lagi.';
+        if (err && err.code === 1) pesan = 'Izin lokasi ditolak. Buka ikon gembok di address bar, izinkan akses lokasi, lalu muat ulang halaman.';
+        if (err && err.code === 2) pesan = 'Sinyal lokasi tidak tersedia. Coba pindah ke tempat terbuka lalu ulangi.';
+        if (err && err.code === 3) pesan = 'Waktu tunggu GPS habis. Cari tempat terbuka lalu coba lagi.';
+        selesai({ ok: false, error: pesan });
+      },
+      { enableHighAccuracy: true, timeout: Math.max(batasWaktu - 800, 3000), maximumAge: 0 }
+    );
+  });
+}
+
+function applyBrand(nama) {
+  if (nama) el('brand-nama').textContent = nama;
+  if (LOGO_URL) {
+    const img = el('brand-logo');
+    img.src = LOGO_URL;
+    img.style.display = 'block';
+    el('brand-logo-fallback').style.display = 'none';
+  }
+}
+
+function tampilView(v) {
+  el('view-asset').classList.toggle('hidden', v !== 'asset');
+  el('view-dash').classList.toggle('hidden', v !== 'dash');
+  el('btn-nav-dash').classList.toggle('hidden', v === 'dash');
+  el('btn-nav-aset').classList.toggle('hidden', v !== 'asset');
+  el('btn-nav-keluar').classList.toggle('hidden', !(v === 'dash' && state.pin));
+  window.scrollTo(0, 0);
+}
+
+function assetUrl(id) {
+  let path = location.pathname;
+  if (path.endsWith('/')) path = path + 'index.html';
+  return location.origin + path + '?asset=' + encodeURIComponent(id);
+}
+
+/* ============================================================
+ * LAPISAN KOMUNIKASI KE SERVER
+ * ============================================================ */
+
+async function api(action, params, post) {
+  if (DEMO_MODE) return demoApi(action, params || {}, post || null);
+  try {
+    let res;
+    if (post) {
+      res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(post) });
+    } else {
+      const q = new URLSearchParams(Object.assign({ action: action }, params || {}));
+      res = await fetch(API_URL + '?' + q.toString());
+    }
+    const teks = await res.text();
+    try {
+      return JSON.parse(teks);
+    } catch (err) {
+      if (teks.indexOf('Sign in') !== -1 || teks.indexOf('accounts.google') !== -1) {
+        return { ok: false, error: 'Deployment belum terbuka untuk umum. Atur Who has access ke Anyone lalu buat versi baru.' };
+      }
+      return { ok: false, error: 'Balasan server tidak bisa dibaca. Pastikan URL berakhiran /exec dan deployment sudah memakai versi terbaru.' };
+    }
+  } catch (err) {
+    return { ok: false, error: 'Koneksi ke server gagal. Periksa paket internet lalu coba lagi.' };
+  }
+}
+
+/* ============================================================
+ * MODE DEMO
+ * Meniru perilaku server sehingga UI bisa dites langsung tanpa
+ * Google Sheets. Tidak dipakai selama API_URL sudah diisi.
+ * ============================================================ */
+
+function demoDb() {
+  if (!demoDb.cache) {
+    try {
+      demoDb.cache = JSON.parse(localStorage.getItem(DEMO_KEY) || 'null');
+    } catch (err) {
+      demoDb.cache = null;
+    }
+    if (!demoDb.cache) demoDb.cache = demoSeed();
+  }
+  return demoDb.cache;
+}
+
+function demoSimpan() {
+  try { localStorage.setItem(DEMO_KEY, JSON.stringify(demoDb.cache)); } catch (err) {}
+}
+
+function demoSeed() {
+  return {
+    konfig: { Nama_Instansi: 'UPAMI', PIN_Admin: '123456', No_WA_Admin: '6281234567890' },
+    kantor: [
+      { id: 'ASTRI', nama: 'Kantor ASTRI', lat: -6.2044, lng: 106.8171, radius: 50 },
+      { id: 'ASTRA', nama: 'Kantor ASTRA', lat: -6.1412, lng: 106.8915, radius: 50 }
+    ],
+    aset: [
+      { id: 'PICKUP-01', nama: 'Mobil Pickup Operasional', kategori: 'Kendaraan', kantor_asal: 'ASTRI', status: 'Tersedia', peminjam: '', wa: '', waktu_pinjam: '', estimasi: '', lat_terakhir: '', lng_terakhir: '', radius_khusus: 120 },
+      { id: 'PROJ-01', nama: 'Proyektor Meeting', kategori: 'Elektronik', kantor_asal: 'ASTRI', status: 'Dipinjam', peminjam: 'Budi Pratama', wa: '6281234567890', waktu_pinjam: fmtTgl(new Date(Date.now() - 5 * 3600000)), estimasi: fmtTgl(new Date(Date.now() + 19 * 3600000)), lat_terakhir: -6.2075, lng_terakhir: 106.8205, radius_khusus: '' },
+      { id: 'SND-01', nama: 'Sound System Portable', kategori: 'Audio', kantor_asal: 'ASTRA', status: 'Tersedia', peminjam: '', wa: '', waktu_pinjam: '', estimasi: '', lat_terakhir: '', lng_terakhir: '', radius_khusus: '' },
+      { id: 'MIC-01', nama: 'Mikrofon Wireless Double', kategori: 'Audio', kantor_asal: 'ASTRA', status: 'Tersedia', peminjam: '', wa: '', waktu_pinjam: '', estimasi: '', lat_terakhir: '', lng_terakhir: '', radius_khusus: '' },
+      { id: 'LAY-01', nama: 'Layar Proyektor Tripod', kategori: 'Elektronik', kantor_asal: 'ASTRI', status: 'Tersedia', peminjam: '', wa: '', waktu_pinjam: '', estimasi: '', lat_terakhir: '', lng_terakhir: '', radius_khusus: '' }
+    ]
+  };
+}
+
+async function demoApi(action, params, post) {
+  await tunggu(280);
+  const db = demoDb();
+  const cariAset = function (id) {
+    return db.aset.filter(function (a) { return String(a.id).toUpperCase() === String(id || '').toUpperCase(); })[0] || null;
+  };
+  const cariKantor = function (id) {
+    return db.kantor.filter(function (k) { return k.id === id; })[0] || null;
+  };
+
+  if (action === 'info') return { ok: true, nama_instansi: db.konfig.Nama_Instansi };
+
+  if (action === 'asset') {
+    const id = String(params.id || '').trim().toUpperCase();
+    const a = cariAset(id);
+    if (!a) return { ok: false, error: 'Aset dengan kode ' + id + ' tidak ditemukan. Periksa label QR atau daftar aset.' };
+    return { ok: true, nama_instansi: db.konfig.Nama_Instansi, no_wa_admin: db.konfig.No_WA_Admin || '', aset: Object.assign({}, a), kantor_asal: cariKantor(a.kantor_asal) ? Object.assign({}, cariKantor(a.kantor_asal)) : null };
+  }
+
+  if (action === 'dashboard') {
+    if (String(params.pin || '') !== String(db.konfig.PIN_Admin)) return { ok: false, error: 'PIN salah.' };
+    return { ok: true, nama_instansi: db.konfig.Nama_Instansi, kantor: db.kantor.map(k => Object.assign({}, k)), aset: db.aset.map(a => Object.assign({}, a)) };
+  }
+
+  if (action === 'pinjam') {
+    const nama = String(post.nama || '').trim();
+    const wa = normWa(post.wa);
+    if (nama.length < 3) return { ok: false, error: 'Nama peminjam wajib diisi (minimal 3 huruf)' };
+    if (wa === '') return { ok: false, error: 'Nomor WhatsApp tidak valid. Gunakan format 08xx atau 628xx' };
+    if (!String(post.keperluan || '').trim()) return { ok: false, error: 'Keperluan atau lokasi pakai wajib diisi' };
+    const durasi = Number(post.durasiJam);
+    if (!durasi || durasi <= 0) return { ok: false, error: 'Durasi peminjaman belum dipilih' };
+    const a = cariAset(post.assetId);
+    if (!a) return { ok: false, error: 'Aset tidak ditemukan' };
+    if (a.status !== 'Tersedia') return { ok: false, error: 'Aset sedang tidak tersedia. Status terakhir ' + a.status };
+    const kantor = cariKantor(a.kantor_asal);
+    const sekarang = new Date();
+    a.status = 'Dipinjam';
+    a.peminjam = nama;
+    a.wa = wa;
+    a.waktu_pinjam = fmtTgl(sekarang);
+    a.estimasi = fmtTgl(new Date(sekarang.getTime() + durasi * 3600000));
+    if (post.lat !== '' && post.lat !== undefined && post.lat !== null) {
+      a.lat_terakhir = Number(post.lat);
+      a.lng_terakhir = Number(post.lng);
+    }
+    demoSimpan();
+    return { ok: true, pesan: 'Pinjaman tercatat', aset: { id: a.id, nama: a.nama }, kantor_asal: kantor ? { id: kantor.id, nama: kantor.nama } : null, waktu_pinjam: a.waktu_pinjam, estimasi_kembali: a.estimasi, gps: post.lat ? 'tercatat' : 'tidak_terbaca' };
+  }
+
+  if (action === 'kembali') {
+    const lat = Number(post.lat);
+    const lng = Number(post.lng);
+    if (!post.lat || !post.lng) return { ok: false, error: 'Koordinat GPS belum terbaca. Aktifkan lokasi lalu cek ulang.' };
+    const a = cariAset(post.assetId);
+    if (!a) return { ok: false, error: 'Aset tidak ditemukan' };
+    if (a.status !== 'Dipinjam') return { ok: false, error: 'Aset ini memang sudah tersedia, tidak perlu dikembalikan' };
+    const kantor = cariKantor(a.kantor_asal);
+    if (!kantor) return { ok: false, error: 'Koordinat kantor asal belum diatur. Hubungi admin untuk override.' };
+    const radius = (a.radius_khusus !== '' && a.radius_khusus > 0) ? a.radius_khusus : kantor.radius;
+    const jarak = Math.round(haversine(lat, lng, kantor.lat, kantor.lng));
+    if (jarak > radius) {
+      return { ok: false, kode: 'OUT_OF_RADIUS', jarak: jarak, radius: Math.round(radius), kantor_asal: { id: kantor.id, nama: kantor.nama }, pesan: 'Pengembalian ditolak. Aset ini wajib dikembalikan ke ' + kantor.nama + ', sedangkan posisi Anda sekarang berjarak ' + jarak + ' meter dari ' + kantor.nama + '.' };
+    }
+    a.status = 'Tersedia';
+    a.peminjam = '';
+    a.wa = '';
+    a.waktu_pinjam = '';
+    a.estimasi = '';
+    a.lat_terakhir = lat;
+    a.lng_terakhir = lng;
+    demoSimpan();
+    return { ok: true, pesan: 'Pengembalian berhasil, status aset kembali Tersedia', jarak: jarak, radius: Math.round(radius), kantor_asal: { id: kantor.id, nama: kantor.nama } };
+  }
+
+  if (action === 'override') {
+    if (String(post.pin || '') !== String(db.konfig.PIN_Admin)) return { ok: false, error: 'PIN salah.' };
+    const a = cariAset(post.assetId);
+    if (!a) return { ok: false, error: 'Aset tidak ditemukan' };
+    if (a.status !== 'Dipinjam') return { ok: false, error: 'Aset tidak sedang dipinjam' };
+    a.status = 'Tersedia';
+    a.peminjam = '';
+    a.wa = '';
+    a.waktu_pinjam = '';
+    a.estimasi = '';
+    demoSimpan();
+    return { ok: true, pesan: 'Status aset dipaksa kembali ke Tersedia' };
+  }
+
+  if (action === 'simpanKantor') {
+    if (String(post.pin || '') !== String(db.konfig.PIN_Admin)) return { ok: false, error: 'PIN salah.' };
+    const id = String(post.id || '').trim().toUpperCase();
+    const lat = Number(post.lat);
+    const lng = Number(post.lng);
+    let radius = Number(post.radius);
+    if (radius === 0 || isNaN(radius)) radius = 50;
+    if (id === '') return { ok: false, error: 'ID kantor wajib diisi' };
+    if (!String(post.nama || '').trim()) return { ok: false, error: 'Nama kantor wajib diisi' };
+    if (isNaN(lat) || lat < -90 || lat > 90) return { ok: false, error: 'Latitude tidak valid, kisarannya -90 sampai 90' };
+    if (isNaN(lng) || lng < -180 || lng > 180) return { ok: false, error: 'Longitude tidak valid, kisarannya -180 sampai 180' };
+    if (radius <= 0) return { ok: false, error: 'Radius harus lebih dari 0 meter' };
+    const ada = cariKantor(id);
+    if (post.isNew) {
+      if (ada) return { ok: false, error: 'ID kantor ' + id + ' sudah dipakai' };
+      db.kantor.push({ id: id, nama: String(post.nama).trim(), lat: lat, lng: lng, radius: radius });
+    } else {
+      if (!ada) return { ok: false, error: 'Kantor ' + id + ' tidak ditemukan' };
+      ada.nama = String(post.nama).trim();
+      ada.lat = lat;
+      ada.lng = lng;
+      ada.radius = radius;
+    }
+    demoSimpan();
+    return { ok: true, pesan: 'Data kantor tersimpan' };
+  }
+
+  if (action === 'simpanAset') {
+    if (String(post.pin || '') !== String(db.konfig.PIN_Admin)) return { ok: false, error: 'PIN salah.' };
+    const id = String(post.id || '').trim().toUpperCase();
+    if (id === '') return { ok: false, error: 'ID aset wajib diisi' };
+    if (!String(post.nama || '').trim()) return { ok: false, error: 'Nama aset wajib diisi' };
+    if (!String(post.kategori || '').trim()) return { ok: false, error: 'Kategori wajib diisi' };
+    const kantorAsal = String(post.kantorAsal || '').trim().toUpperCase();
+    if (!cariKantor(kantorAsal)) return { ok: false, error: 'Kantor asal ' + kantorAsal + ' belum terdaftar' };
+    const radiusKhusus = String(post.radiusKhusus) === '' ? '' : Number(post.radiusKhusus);
+    if (radiusKhusus !== '' && (isNaN(radiusKhusus) || radiusKhusus <= 0)) return { ok: false, error: 'Radius khusus harus lebih dari 0' };
+    const a = cariAset(id);
+    if (post.isNew) {
+      if (a) return { ok: false, error: 'ID aset ' + id + ' sudah dipakai' };
+      db.aset.push({ id: id, nama: String(post.nama).trim(), kategori: String(post.kategori).trim(), kantor_asal: kantorAsal, status: 'Tersedia', peminjam: '', wa: '', waktu_pinjam: '', estimasi: '', lat_terakhir: '', lng_terakhir: '', radius_khusus: radiusKhusus });
+    } else {
+      if (!a) return { ok: false, error: 'Aset ' + id + ' tidak ditemukan' };
+      a.nama = String(post.nama).trim();
+      a.kategori = String(post.kategori).trim();
+      a.radius_khusus = radiusKhusus;
+    }
+    demoSimpan();
+    return { ok: true, pesan: 'Data aset tersimpan' };
+  }
+
+  return { ok: false, error: 'Aksi tidak dikenal' };
+}
+
+/* ============================================================
+ * ALUR PEMINJAM
+ * ============================================================ */
+
+function chipStatus(status) {
+  if (status === 'Tersedia') return '<span class="chip chip-hijau">Tersedia</span>';
+  if (status === 'Dipinjam') return '<span class="chip chip-kuning">Dipinjam</span>';
+  if (status === 'Maintenance') return '<span class="chip chip-abu">Maintenance</span>';
+  return '<span class="chip chip-abu">' + esc(status) + '</span>';
+}
+
+function kantorNama() {
+  return state.kantorAsal ? state.kantorAsal.nama : 'kantor asal';
+}
+
+async function bukaAset(id) {
+  state.aset = null;
+  state.kantorAsal = null;
+  tampilView('asset');
+  el('asset-box').innerHTML =
+    '<div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-3">' +
+    '<span class="spin spin-gelap"></span><span class="text-sm text-slate-500 font-semibold">Mengambil data aset...</span></div>';
+  const data = await api('asset', { id: id });
+  if (!data.ok) {
+    el('asset-box').innerHTML =
+      '<div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">' +
+      '<div class="w-12 h-12 mx-auto rounded-full bg-red-50 flex items-center justify-center text-red-600 font-extrabold text-xl">!</div>' +
+      '<h2 class="font-extrabold text-slate-900 mt-3">Data tidak bisa dibuka</h2>' +
+      '<p class="text-sm text-slate-500 mt-1">' + esc(data.error) + '</p>' +
+      '<div class="flex gap-2 mt-4"><button id="btn-coba-lagi" class="btn btn-primary flex-1 text-sm">Coba Lagi</button>' +
+      '<button id="btn-ke-dash" class="btn btn-ghost flex-1 text-sm">Buka Dashboard</button></div></div>';
+    el('btn-coba-lagi').onclick = function () { bukaAset(id); };
+    el('btn-ke-dash').onclick = bukaDashboard;
+    return;
+  }
+  state.aset = data.aset;
+  state.kantorAsal = data.kantor_asal;
+  state.namaInstansi = data.nama_instansi || state.namaInstansi;
+  state.noWaAdmin = data.no_wa_admin || '';
+  applyBrand(state.namaInstansi);
+  renderAset();
+}
+
+function renderAset() {
+  const a = state.aset;
+  if (!a) return;
+  let body = '';
+  if (a.status === 'Tersedia') body = htmlFormPinjam();
+  else if (a.status === 'Dipinjam') body = htmlDipinjam();
+  else body = htmlNonTersedia();
+
+  el('asset-box').innerHTML =
+    '<div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">' +
+    '<div class="p-5 border-b border-slate-100">' +
+    '<div class="flex items-center justify-between gap-2 flex-wrap">' +
+    '<span class="chip chip-biru">' + esc(a.kategori || 'Aset') + '</span>' + chipStatus(a.status) +
+    '</div>' +
+    '<h2 class="text-xl font-extrabold text-slate-900 mt-3">' + esc(a.nama) + '</h2>' +
+    '<p class="text-sm font-mono text-slate-400 mt-0.5">' + esc(a.id) + '</p>' +
+    '</div>' +
+    '<div class="p-5 space-y-4">' + kotakKantorAsal() + body + '</div>' +
+    '</div>';
+
+  if (a.status === 'Tersedia') pasangFormPinjam();
+  if (a.status === 'Dipinjam') {
+    const btn = el('btn-kembalikan');
+    if (btn) btn.onclick = mulaiKembalikan;
+  }
+}
+
+function kotakKantorAsal() {
+  const k = state.kantorAsal;
+  let isi;
+  if (!k) {
+    isi = '<p class="text-sm text-red-700 mt-1 font-semibold">Kantor asal belum terdaftar di sistem. Hubungi pengurus untuk perbaikan data.</p>';
+  } else {
+    const radius = (state.aset.radius_khusus !== '' && state.aset.radius_khusus > 0) ? state.aset.radius_khusus : k.radius;
+    isi =
+      '<p class="font-extrabold text-sky-900 mt-0.5">' + esc(k.nama) + '</p>' +
+      '<p class="text-sm text-sky-800 mt-1">Hanya tersedia &amp; wajib dikembalikan ke <b>' + esc(k.nama) + '</b></p>' +
+      '<p class="text-xs text-sky-700 mt-1">Radius pengembalian ' + radius + ' meter. Koordinat kantor ' + k.lat + ', ' + k.lng + '</p>' +
+      '<a href="https://www.google.com/maps?q=' + k.lat + ',' + k.lng + '" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-xs font-bold text-sky-700 underline mt-2">Buka Lokasi Kantor</a>';
+  }
+  return '<div class="rounded-xl bg-sky-50 border border-sky-200 p-3.5">' +
+    '<p class="text-xs font-bold text-sky-700 uppercase tracking-wide">Kantor Asal</p>' + isi + '</div>';
+}
+
+function htmlNonTersedia() {
+  const a = state.aset;
+  return '<div class="rounded-xl bg-slate-50 border border-slate-200 p-4">' +
+    '<p class="text-sm text-slate-700 font-medium">Aset sedang dalam perawatan dan belum bisa dipinjam. Hubungi pengurus untuk mengetahui kapan aset ini kembali tersedia.</p>' +
+    '</div>';
+}
+
+/* ---------- status Dipinjam ---------- */
+
+function htmlDipinjam() {
+  const a = state.aset;
+  const lewat = parseWib(a.estimasi) !== null && parseWib(a.estimasi) < Date.now();
+  let kotakWaktu;
+  if (lewat) {
+    kotakWaktu =
+      '<div class="rounded-xl bg-red-50 border border-red-200 p-3.5">' +
+      '<p class="text-xs font-bold text-red-700 uppercase tracking-wide">Sedang Dipinjam, Sudah Overdue</p>' +
+      '<p class="font-extrabold text-red-900 mt-0.5">' + esc(a.peminjam) + '</p>' +
+      '<p class="text-sm text-red-800 mt-1">Batas kembali ' + fmtWib(a.estimasi) + ' (' + sisaWaktu(a.estimasi) + ')</p>' +
+      '<p class="text-xs text-red-700 mt-1 font-semibold">Segera kembalikan aset ini ke kantornya.</p></div>';
+  } else {
+    kotakWaktu =
+      '<div class="rounded-xl bg-amber-50 border border-amber-200 p-3.5">' +
+      '<p class="text-xs font-bold text-amber-700 uppercase tracking-wide">Sedang Dipinjam</p>' +
+      '<p class="font-extrabold text-amber-900 mt-0.5">' + esc(a.peminjam) + '</p>' +
+      '<p class="text-sm text-amber-800 mt-1">Dipinjam sejak ' + fmtWib(a.waktu_pinjam) + ', batas kembali ' + fmtWib(a.estimasi) + ' (' + sisaWaktu(a.estimasi) + ')</p></div>';
+  }
+  return kotakWaktu +
+    '<div class="rounded-xl bg-sky-50 border border-sky-200 p-3.5 text-sm text-sky-900">' +
+    'Wajib Dikembalikan ke <b>' + esc(kantorNama()) + '</b></div>' +
+    '<p class="text-xs text-slate-500">Pengembalian divalidasi lewat GPS. Pastikan Anda sudah berada di lingkungan ' + esc(kantorNama()) + ' sebelum menekan tombol di bawah.</p>' +
+    '<button id="btn-kembalikan" class="btn btn-primary w-full !py-3 text-base">Kembalikan Barang Ini</button>' +
+    '<div id="kembali-area"></div>';
+}
+
+function resetTombolKembali() {
+  const btn = el('btn-kembalikan');
+  if (btn) { btn.disabled = false; btn.textContent = 'Kembalikan Barang Ini'; }
+  if (el('kembali-area')) el('kembali-area').innerHTML = '';
+}
+
+async function mulaiKembalikan() {
+  const area = el('kembali-area');
+  if (!area) return;
+  const btn = el('btn-kembalikan');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Mengambil posisi GPS...'; }
+  area.innerHTML =
+    '<div class="rounded-xl border border-slate-200 bg-slate-50 p-4 flex items-center gap-3">' +
+    '<span class="spin spin-gelap"></span>' +
+    '<div><p class="text-sm font-semibold text-slate-700">Mengambil posisi GPS...</p>' +
+    '<button id="btn-batal-gps" class="text-xs text-slate-400 underline mt-1">Batalkan</button></div></div>';
+  el('btn-batal-gps').onclick = function () { state.gpsToken++; resetTombolKembali(); };
+
+  const gps = await getGps();
+  const masihAktif = state.aset && state.aset.status === 'Dipinjam' && el('kembali-area');
+  if (!masihAktif) return;
+  if (!gps.ok) {
+    renderGpsGagal(gps.error);
+    return;
+  }
+  area.innerHTML =
+    '<div class="rounded-xl border border-sky-200 bg-sky-50 p-4 flex items-center gap-3">' +
+    '<span class="spin spin-gelap"></span>' +
+    '<p class="text-sm font-semibold text-sky-900">Posisi terbaca, akurasi ±' + Math.round(gps.akurasi) + ' meter. Memvalidasi ke kantor asal...</p></div>';
+
+  const res = await api('kembali', null, {
+    action: 'kembali',
+    assetId: state.aset.id,
+    lat: gps.lat,
+    lng: gps.lng,
+    akurasi: gps.akurasi
+  });
+  if (!state.aset) return;
+  if (res.ok) {
+    renderSuksesKembali(res);
+  } else if (res.kode === 'OUT_OF_RADIUS') {
+    renderDitolak(res, gps);
+  } else {
+    toast(res.error, 'merah');
+    resetTombolKembali();
+  }
+}
+
+function renderGpsGagal(pesan) {
+  const area = el('kembali-area');
+  const btn = el('btn-kembalikan');
+  if (btn) { btn.disabled = true; btn.textContent = 'Kembalikan Barang Ini'; }
+  area.innerHTML =
+    '<div class="rounded-xl border border-amber-300 bg-amber-50 p-4">' +
+    '<p class="text-sm font-semibold text-amber-900">Lokasi tidak bisa dibaca</p>' +
+    '<p class="text-sm text-amber-800 mt-1">' + esc(pesan) + '</p>' +
+    '<div class="grid grid-cols-2 gap-2 mt-3">' +
+    '<button id="btn-gps-coba" class="btn btn-ghost text-sm">Coba Lagi</button>' +
+    '<button id="btn-gps-bypass" class="btn btn-primary text-sm">Minta Bypass Admin</button></div>' +
+    '<div id="bypass-panel" class="hidden mt-3"></div></div>';
+  el('btn-gps-coba').onclick = mulaiKembalikan;
+  el('btn-gps-bypass').onclick = renderBypass;
+}
+
+function renderSuksesKembali(res) {
+  const area = el('kembali-area');
+  const btn = el('btn-kembalikan');
+  if (btn) btn.remove();
+  area.innerHTML =
+    '<div class="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-center">' +
+    '<div class="w-12 h-12 mx-auto rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-extrabold text-xl">✓</div>' +
+    '<h3 class="font-extrabold text-emerald-900 mt-2">Barang Sudah Dikembalikan</h3>' +
+    '<p class="text-sm text-emerald-800 mt-1">Jarak Anda ' + res.jarak + ' meter dari ' + esc(res.kantor_asal.nama) + ', masuk radius ' + res.radius + ' meter. Status aset kembali Tersedia. Terima kasih.</p>' +
+    '<button id="btn-kembali-refresh" class="btn btn-primary w-full mt-3 text-sm">Muat Ulang Halaman</button></div>';
+  el('btn-kembali-refresh').onclick = function () { bukaAset(state.aset.id); };
+  toast('Pengembalian berhasil');
+}
+
+function renderDitolak(res, gps) {
+  const area = el('kembali-area');
+  const btn = el('btn-kembalikan');
+  if (btn) { btn.disabled = true; btn.textContent = 'Kembalikan Barang Ini'; }
+  const k = state.kantorAsal;
+  area.innerHTML =
+    '<div class="rounded-2xl border border-red-300 bg-red-50 p-4">' +
+    '<h3 class="font-extrabold text-red-700">Pengembalian Ditolak</h3>' +
+    '<p class="text-sm text-red-900 mt-1 font-medium">' + esc(res.pesan) + '</p>' +
+    '<div class="grid grid-cols-2 gap-2 mt-3 text-center">' +
+    '<div class="bg-white border border-red-200 rounded-lg p-2"><p class="text-xs text-slate-500">Jarak Anda</p><p class="font-extrabold text-red-600">' + res.jarak + ' m</p></div>' +
+    '<div class="bg-white border border-red-200 rounded-lg p-2"><p class="text-xs text-slate-500">Radius diizinkan</p><p class="font-extrabold text-slate-800">' + res.radius + ' m</p></div>' +
+    '</div>' +
+    '<p class="text-xs text-red-700 mt-2">Akurasi GPS perangkat ±' + Math.round(gps.akurasi) + ' meter. Datang lebih dekat ke ' + esc(res.kantor_asal.nama) + ' lalu cek ulang.</p>' +
+    '<div class="grid grid-cols-2 gap-2 mt-3">' +
+    (k ? '<a href="https://www.google.com/maps?q=' + k.lat + ',' + k.lng + '" target="_blank" rel="noopener" class="btn btn-ghost text-sm">Petunjuk Arah</a>' : '<span></span>') +
+    '<button id="btn-cek-ulang" class="btn btn-primary text-sm">Cek Ulang Lokasi</button></div>' +
+    '<button id="btn-bypass" class="btn btn-ghost w-full mt-2 text-sm">Minta Bypass Admin</button>' +
+    '<div id="bypass-panel" class="hidden mt-3"></div></div>';
+  el('btn-cek-ulang').onclick = mulaiKembalikan;
+  el('btn-bypass').onclick = renderBypass;
+}
+
+function renderBypass() {
+  const panel = el('bypass-panel');
+  if (!panel) return;
+  const a = state.aset;
+  const noAdmin = state.noWaAdmin || '';
+  panel.classList.remove('hidden');
+  let isi =
+    '<div class="rounded-xl bg-white border border-slate-200 p-3 text-sm text-slate-600">' +
+    '<p>Pengembalian paksa hanya bisa dilakukan pengurus dari Dashboard Pengurus lewat tombol Force Return. Hubungi pengurus dan sebutkan kode aset <b>' + esc(a.id) + '</b>.</p>';
+  if (noAdmin) {
+    const teks = 'Admin ' + state.namaInstansi + ', mohon force return untuk aset ' + a.id + ' (' + a.nama + '). Pengembalian GPS ditolak, jarak terbaca di luar radius kantor asal.';
+    isi += '<a href="https://wa.me/' + noAdmin + '?text=' + encodeURIComponent(teks) + '" target="_blank" rel="noopener" class="btn btn-primary w-full mt-2 text-sm">Hubungi Admin via WhatsApp</a>';
+  }
+  isi += '<button id="btn-cek-status" class="btn btn-ghost w-full mt-2 text-sm">Muat Ulang Status</button></div>';
+  panel.innerHTML = isi;
+  el('btn-cek-status').onclick = function () { bukaAset(state.aset.id); };
+}
+
+/* ---------- status Tersedia, form pinjam ---------- */
+
+let durasiDipilih = 24;
+
+function htmlFormPinjam() {
+  const user = simpananUser();
+  const chips = [
+    { jam: 3, label: '3 jam' },
+    { jam: 6, label: '6 jam' },
+    { jam: 24, label: '1 hari' },
+    { jam: 48, label: '2 hari' }
+  ];
+  let tombolDurasi = '';
+  chips.forEach(function (c) {
+    tombolDurasi += '<button type="button" data-jam="' + c.jam + '" class="durasi-btn btn btn-ghost !px-1 text-sm' + (c.jam === durasiDipilih ? ' aktif' : '') + '">' + c.label + '</button>';
+  });
+  return '<div class="rounded-xl bg-white border border-slate-200 p-4 space-y-3">' +
+    '<div><label class="lbl" for="f-nama">Nama Lengkap</label>' +
+    '<input id="f-nama" class="inp" placeholder="nama yang bisa dihubungi" value="' + esc(user.nama || '') + '"></div>' +
+    '<div><label class="lbl" for="f-wa">Nomor WhatsApp</label>' +
+    '<input id="f-wa" class="inp" inputmode="numeric" placeholder="0812 3456 7890" value="' + esc(user.wa || '') + '">' +
+    '<p class="text-xs text-slate-400 mt-1">Gunakan format 08xx atau 628xx. Nomor ini dipakai pengurus untuk mengingatkan bila batas waktu lewat.</p></div>' +
+    '<div><label class="lbl" for="f-keperluan">Keperluan atau Lokasi Pakai</label>' +
+    '<input id="f-keperluan" class="inp" placeholder="misal kegiatan sosialisasi di balai desa"></div>' +
+    '<div><span class="lbl">Durasi Peminjaman</span>' +
+    '<div class="grid grid-cols-4 gap-2">' + tombolDurasi + '</div>' +
+    '<p id="estimasi-teks" class="text-xs text-slate-500 mt-2"></p></div>' +
+    '<p id="form-error" class="hidden text-sm text-red-600 font-semibold"></p>' +
+    '<button id="btn-pinjam" class="btn btn-primary w-full !py-3 text-base">Konfirmasi Pinjam</button>' +
+    '<p class="text-xs text-slate-400 text-center">Saat menekan Konfirmasi Pinjam, posisi GPS perangkat Anda dicatat sebagai titik pengambilan barang.</p></div>';
+}
+
+function simpananUser() {
+  try {
+    return JSON.parse(localStorage.getItem(KEY_USER) || '{}') || {};
+  } catch (err) {
+    return {};
+  }
+}
+
+function pasangFormPinjam() {
+  el('estimasi-teks').textContent = 'Estimasi kembali ' + fmtWib(fmtTgl(new Date(Date.now() + durasiDipilih * 3600000)));
+  document.querySelectorAll('.durasi-btn').forEach(function (b) {
+    b.onclick = function () {
+      durasiDipilih = Number(b.getAttribute('data-jam'));
+      document.querySelectorAll('.durasi-btn').forEach(function (x) { x.classList.remove('aktif'); });
+      b.classList.add('aktif');
+      el('estimasi-teks').textContent = 'Estimasi kembali ' + fmtWib(fmtTgl(new Date(Date.now() + durasiDipilih * 3600000)));
+    };
+  });
+  el('btn-pinjam').onclick = submitPinjam;
+}
+
+function tampilErrorForm(pesan) {
+  const p = el('form-error');
+  p.textContent = pesan;
+  p.classList.remove('hidden');
+}
+
+async function submitPinjam() {
+  const nama = el('f-nama').value.trim();
+  const waRaw = el('f-wa').value.trim();
+  const keperluan = el('f-keperluan').value.trim();
+  const wa = normWa(waRaw);
+  if (nama.length < 3) { tampilErrorForm('Nama lengkap wajib diisi, minimal 3 huruf.'); return; }
+  if (wa === '') { tampilErrorForm('Nomor WhatsApp tidak valid. Gunakan format 08xx atau 628xx.'); return; }
+  if (keperluan === '') { tampilErrorForm('Keperluan atau lokasi pakai wajib diisi.'); return; }
+
+  const btn = el('btn-pinjam');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Mengambil GPS...';
+  const gps = await getGps({ timeout: 12000 });
+  let gpsOk = false;
+  if (gps.ok) {
+    gpsOk = true;
+    btn.innerHTML = '<span class="spin"></span> Menyimpan pinjaman...';
+  } else {
+    btn.innerHTML = '<span class="spin"></span> Menyimpan tanpa GPS...';
+  }
+
+  const res = await api('pinjam', null, {
+    action: 'pinjam',
+    assetId: state.aset.id,
+    nama: nama,
+    wa: wa,
+    keperluan: keperluan,
+    durasiJam: durasiDipilih,
+    lat: gpsOk ? gps.lat : '',
+    lng: gpsOk ? gps.lng : '',
+    akurasi: gpsOk ? gps.akurasi : ''
+  });
+
+  if (!res.ok) {
+    toast(res.error, 'merah');
+    btn.disabled = false;
+    btn.textContent = 'Konfirmasi Pinjam';
+    return;
+  }
+
+  try { localStorage.setItem(KEY_USER, JSON.stringify({ nama: nama, wa: waRaw })); } catch (err) {}
+  renderSuksesPinjam(res, gpsOk);
+}
+
+function renderSuksesPinjam(res, gpsOk) {
+  const a = state.aset;
+  let catatanGps = '';
+  if (!gpsOk) {
+    catatanGps = '<div class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900 text-left">Posisi GPS tidak terbaca saat pengambilan, pinjaman tetap diproses. Pastikan izin lokasi aktif agar pengembalian lancar.</div>';
+  }
+  el('asset-box').innerHTML =
+    '<div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-center">' +
+    '<div class="w-14 h-14 mx-auto rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-extrabold text-2xl">✓</div>' +
+    '<h2 class="font-extrabold text-xl text-slate-900 mt-3">Pinjaman Tercatat</h2>' +
+    '<p class="text-sm text-slate-500 mt-1">' + esc(res.aset.nama) + ' (' + esc(res.aset.id) + ') diambil pada ' + fmtWib(res.waktu_pinjam) + '</p>' +
+    catatanGps +
+    '<div class="rounded-xl bg-amber-50 border border-amber-200 p-4 mt-4 text-left">' +
+    '<p class="text-xs font-bold text-amber-700 uppercase tracking-wide">Pengingat Wajib</p>' +
+    '<p class="text-sm text-amber-900 mt-1 font-semibold">Barang ini wajib dikembalikan ke ' + esc(res.kantor_asal ? res.kantor_asal.nama : kantorNama()) + ' paling lambat ' + fmtWib(res.estimasi_kembali) + '.</p></div>' +
+    '<button id="btn-kembali-sekarang" class="btn btn-primary w-full mt-4">Kembalikan Sekarang</button>' +
+    '<button id="btn-selesai" class="btn btn-ghost w-full mt-2">Selesai</button></div>';
+  el('btn-kembali-sekarang').onclick = function () { bukaAset(state.aset.id); };
+  el('btn-selesai').onclick = function () { bukaAset(state.aset.id); };
+  toast('Pinjaman berhasil dicatat');
+}
+
+/* ============================================================
+ * DASHBOARD PENGURUS
+ * ============================================================ */
+
+function bukaDashboard() {
+  tampilView('dash');
+  if (state.pin && el('dash-content').classList.contains('hidden')) muatDashboard(state.pin);
+}
+
+async function muatDashboard(pin, senyap) {
+  const data = await api('dashboard', { pin: pin });
+  if (!data.ok) {
+    if (senyap) return;
+    if (String(data.error).indexOf('PIN') !== -1) {
+      state.pin = '';
+      try { sessionStorage.removeItem(KEY_PIN); } catch (err) {}
+      el('dash-content').classList.add('hidden');
+      el('pin-gate').classList.remove('hidden');
+      el('btn-nav-keluar').classList.add('hidden');
+      tampilPinError(data.error);
+    } else {
+      toast(data.error, 'merah');
+    }
+    return;
+  }
+  terimaData(data);
+}
+
+async function cobaMasuk() {
+  const pin = el('input-pin').value.trim();
+  if (!pin) { tampilPinError('Masukkan PIN dulu.'); return; }
+  const btn = el('btn-masuk');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Memeriksa...';
+  const data = await api('dashboard', { pin: pin });
+  btn.disabled = false;
+  btn.textContent = 'Masuk Dashboard';
+  if (!data.ok) { tampilPinError(data.error); return; }
+  state.pin = pin;
+  try { sessionStorage.setItem(KEY_PIN, pin); } catch (err) {}
+  el('input-pin').value = '';
+  el('pin-error').classList.add('hidden');
+  terimaData(data);
+}
+
+function tampilPinError(msg) {
+  const p = el('pin-error');
+  p.textContent = msg;
+  p.classList.remove('hidden');
+}
+
+function terimaData(data) {
+  state.namaInstansi = data.nama_instansi || state.namaInstansi;
+  applyBrand(state.namaInstansi);
+  state.kantor = data.kantor || [];
+  state.asetList = data.aset || [];
+  el('pin-gate').classList.add('hidden');
+  el('dash-content').classList.remove('hidden');
+  el('btn-nav-keluar').classList.remove('hidden');
+  renderDash();
+}
+
+function kantorById(id) {
+  return state.kantor.filter(function (k) { return k.id === id; })[0] || null;
+}
+
+function hitungKpi() {
+  const total = state.asetList.length;
+  const dip = state.asetList.filter(function (a) { return a.status === 'Dipinjam'; });
+  const ters = state.asetList.filter(function (a) { return a.status === 'Tersedia'; });
+  const ovd = dip.filter(function (a) {
+    const t = parseWib(a.estimasi);
+    return t !== null && t < Date.now();
+  });
+  el('kpi-total').textContent = total;
+  el('kpi-dipinjam').textContent = dip.length;
+  el('kpi-tersedia').textContent = ters.length;
+  el('kpi-overdue').textContent = ovd.length;
+}
+
+function isiFilterKantor() {
+  const sel = el('filter-kantor');
+  const sekarang = sel.value;
+  sel.innerHTML = '<option value="SEMUA">Semua Kantor</option>' +
+    state.kantor.map(function (k) {
+      return '<option value="' + esc(k.id) + '">' + esc(k.nama) + '</option>';
+    }).join('');
+  const masihAda = Array.from(sel.options).some(function (o) { return o.value === sekarang; });
+  sel.value = masihAda ? sekarang : 'SEMUA';
+}
+
+function filterAset() {
+  const fKantor = el('filter-kantor').value;
+  const q = el('cari-aset').value.trim().toLowerCase();
+  return state.asetList.filter(function (a) {
+    if (fKantor !== 'SEMUA' && a.kantor_asal !== fKantor) return false;
+    if (q) {
+      const gabungan = (a.id + ' ' + a.nama + ' ' + a.kategori + ' ' + (a.peminjam || '')).toLowerCase();
+      if (gabungan.indexOf(q) === -1) return false;
+    }
+    return true;
+  });
+}
+
+function chipOverdue(a) {
+  const t = parseWib(a.estimasi);
+  if (a.status === 'Dipinjam' && t !== null && t < Date.now()) return ' <span class="chip chip-merah">Overdue</span>';
+  return '';
+}
+
+function tombolAksi(a) {
+  let html = '<button class="btn-mini" data-qr="' + esc(a.id) + '">Cetak QR</button>' +
+    '<button class="btn-mini" data-edit="' + esc(a.id) + '">Edit</button>';
+  if (a.status === 'Dipinjam') {
+    html += '<button class="btn-mini btn-mini-merah" data-override="' + esc(a.id) + '">Force Return</button>';
+  }
+  return html;
+}
+
+function renderTabelAset() {
+  const daftar = filterAset();
+  const kosong = '<p class="text-sm text-slate-400 py-6 text-center">Belum ada aset pada pilihan ini.</p>';
+
+  let baris = '';
+  daftar.forEach(function (a) {
+    const info = a.status === 'Dipinjam'
+      ? '<p class="font-semibold text-slate-700">' + esc(a.peminjam || '') + '</p><p class="text-xs text-slate-500">' + fmtWib(a.estimasi) + '</p><p class="text-xs ' + (chipOverdue(a) ? 'text-red-600 font-bold' : 'text-slate-400') + '">' + sisaWaktu(a.estimasi) + '</p>'
+      : '<p class="text-xs text-slate-300">kosong</p>';
+    baris += '<tr class="hover:bg-slate-50">' +
+      '<td class="px-3 py-2 border-b border-slate-100"><p class="font-bold text-slate-900">' + esc(a.id) + '</p><p class="text-xs text-slate-500">' + esc(a.nama) + '</p></td>' +
+      '<td class="px-3 py-2 border-b border-slate-100 text-slate-600">' + esc(a.kategori) + '</td>' +
+      '<td class="px-3 py-2 border-b border-slate-100"><span class="chip chip-biru">' + esc(a.kantor_asal) + '</span></td>' +
+      '<td class="px-3 py-2 border-b border-slate-100">' + chipStatus(a.status) + chipOverdue(a) + '</td>' +
+      '<td class="px-3 py-2 border-b border-slate-100">' + info + '</td>' +
+      '<td class="px-3 py-2 border-b border-slate-100 no-print"><div class="flex gap-1 flex-wrap">' + tombolAksi(a) + '</div></td>' +
+      '</tr>';
+  });
+  el('tabel-aset').innerHTML = baris || '<tr><td colspan="6">' + kosong + '</td></tr>';
+
+  let kartu = '';
+  daftar.forEach(function (a) {
+    kartu += '<div class="border rounded-xl p-3 ' + (chipOverdue(a) ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white') + '">' +
+      '<div class="flex items-center justify-between gap-2"><p class="font-bold text-slate-900">' + esc(a.id) + '</p>' + chipStatus(a.status) + chipOverdue(a) + '</div>' +
+      '<p class="text-sm text-slate-600 mt-0.5">' + esc(a.nama) + ' , ' + esc(a.kategori) + '</p>' +
+      '<p class="text-xs mt-1"><span class="chip chip-biru">HOME ' + esc(a.kantor_asal) + '</span></p>' +
+      (a.status === 'Dipinjam' ? '<p class="text-xs text-slate-500 mt-1">' + esc(a.peminjam || '') + ' , batas ' + fmtWib(a.estimasi) + ' , ' + sisaWaktu(a.estimasi) + '</p>' : '') +
+      '<div class="flex gap-1 flex-wrap mt-2">' + tombolAksi(a) + '</div></div>';
+  });
+  el('kartu-aset').innerHTML = kartu || kosong;
+
+  pasangAksiBaris();
+}
+
+function pasangAksiBaris() {
+  document.querySelectorAll('[data-qr]').forEach(function (b) {
+    b.onclick = function () {
+      const a = cariAsetDiList(b.getAttribute('data-qr'));
+      if (a) bukaCetak([a], 'Satu label untuk ' + a.id);
+    };
+  });
+  document.querySelectorAll('[data-edit]').forEach(function (b) {
+    b.onclick = function () {
+      const a = cariAsetDiList(b.getAttribute('data-edit'));
+      if (a) bukaModalAset(a);
+    };
+  });
+  document.querySelectorAll('[data-override]').forEach(function (b) {
+    b.onclick = function () {
+      const a = cariAsetDiList(b.getAttribute('data-override'));
+      if (a) bukaModalOverride(a);
+    };
+  });
+}
+
+function cariAsetDiList(id) {
+  return state.asetList.filter(function (a) { return a.id === id; })[0] || null;
+}
+
+function renderAktif() {
+  const dip = filterAset().filter(function (a) { return a.status === 'Dipinjam'; });
+  if (!dip.length) {
+    el('daftar-aktif').innerHTML = '<p class="text-sm text-slate-400 py-4 text-center">Belum ada peminjaman aktif pada pilihan ini.</p>';
+    return;
+  }
+  let html = '';
+  dip.forEach(function (a) {
+    const ovd = chipOverdue(a) !== '';
+    const kantor = kantorById(a.kantor_asal);
+    const namaKantor = kantor ? kantor.nama : a.kantor_asal;
+    const teksWa = 'Halo ' + (a.peminjam || '') + ', kami dari ' + state.namaInstansi + ' ingin mengingatkan bahwa ' + a.nama + ' (' + a.id + ') wajib dikembalikan ke ' + namaKantor + ' paling lambat ' + fmtWib(a.estimasi) + '. Mohon sisa waktunya diperhatikan. Terima kasih.';
+    html += '<div class="border rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-2 ' + (ovd ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white') + '">' +
+      '<div class="flex-1 min-w-0">' +
+      '<p class="font-bold text-slate-900">' + esc(a.id) + ' <span class="font-normal text-slate-500 text-sm">' + esc(a.nama) + '</span></p>' +
+      '<p class="text-sm text-slate-600 mt-0.5">' + esc(a.peminjam || '') + ' , ' + esc(a.wa || 'nomor tidak tercatat') + '</p>' +
+      '<p class="text-xs ' + (ovd ? 'text-red-600 font-bold' : 'text-slate-500') + ' mt-0.5">Batas kembali ' + fmtWib(a.estimasi) + ' , ' + sisaWaktu(a.estimasi) + '</p>' +
+      '</div>' +
+      '<div class="flex gap-2 shrink-0">' +
+      (a.wa ? '<a href="https://wa.me/' + esc(a.wa) + '?text=' + encodeURIComponent(teksWa) + '" target="_blank" rel="noopener" class="btn btn-ghost text-sm">Ingatkan WA</a>' : '') +
+      '<button class="btn btn-danger text-sm" data-override="' + esc(a.id) + '">Force Return</button>' +
+      '</div></div>';
+  });
+  el('daftar-aktif').innerHTML = html;
+  pasangAksiBaris();
+}
+
+function renderDash() {
+  hitungKpi();
+  isiFilterKantor();
+  renderTabelAset();
+  renderAktif();
+  renderMap();
+}
+
+/* ============================================================
+ * PETA (Leaflet, OpenStreetMap)
+ * ============================================================ */
+
+function renderMap() {
+  if (typeof L === 'undefined') {
+    el('map').innerHTML = '<div class="h-full flex items-center justify-center text-sm text-slate-400 p-4 text-center">Peta tidak bisa dimuat. Periksa koneksi internet lalu muat ulang halaman.</div>';
+    return;
+  }
+  if (!state.map) {
+    state.map = L.map('map', { scrollWheelZoom: false }).setView([-6.2, 106.8], 11);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(state.map);
+    state.layerKantor = L.layerGroup().addTo(state.map);
+    state.layerAset = L.layerGroup().addTo(state.map);
+  }
+  state.layerKantor.clearLayers();
+  state.layerAset.clearLayers();
+  const batas = [];
+
+  state.kantor.forEach(function (k) {
+    if (k.lat === '' || k.lng === '' || k.lat === undefined) return;
+    L.circleMarker([k.lat, k.lng], { radius: 9, color: '#1d4ed8', weight: 2, fillColor: '#1d4ed8', fillOpacity: 0.9 })
+      .bindTooltip(k.nama)
+      .bindPopup('<b>' + esc(k.nama) + '</b><br>Radius default geo-fencing ' + k.radius + ' meter')
+      .addTo(state.layerKantor);
+    L.circle([k.lat, k.lng], { radius: k.radius, color: '#1d4ed8', weight: 1, fillColor: '#1d4ed8', fillOpacity: 0.08 }).addTo(state.layerKantor);
+    batas.push([k.lat, k.lng]);
+  });
+
+  state.asetList.forEach(function (a) {
+    if (a.status !== 'Dipinjam') return;
+    if (a.lat_terakhir === '' || a.lng_terakhir === '') return;
+    const kantor = kantorById(a.kantor_asal);
+    const labelPopup = '<b>' + esc(a.id) + ' , ' + esc(a.nama) + '</b><br>Kantor asal ' + esc(kantor ? kantor.nama : a.kantor_asal) +
+      '<br>Peminjam ' + esc(a.peminjam || '') + '<br>Batas kembali ' + fmtWib(a.estimasi);
+    L.circleMarker([a.lat_terakhir, a.lng_terakhir], { radius: 7, color: '#d97706', weight: 2, fillColor: '#f59e0b', fillOpacity: 1 })
+      .bindTooltip(a.id + ' , asal ' + (kantor ? kantor.nama : a.kantor_asal))
+      .bindPopup(labelPopup)
+      .addTo(state.layerAset);
+    batas.push([a.lat_terakhir, a.lng_terakhir]);
+  });
+
+  if (batas.length) {
+    state.map.fitBounds(batas, { padding: [30, 30], maxZoom: 15 });
+  }
+  setTimeout(function () { state.map.invalidateSize(); }, 250);
+}
+
+/* ============================================================
+ * MODAL MANAJEMEN KANTOR DAN ASET
+ * ============================================================ */
+
+function bukaModalAset(a) {
+  el('judul-modal-aset').textContent = a ? 'Edit Aset' : 'Aset Baru';
+  el('aset-id').value = a ? a.id : '';
+  el('aset-id').disabled = !!a;
+  el('aset-id-note').textContent = a ? 'ID tidak bisa diubah.' : 'Kode menjadi label QR. Gunakan huruf besar tanpa spasi.';
+  el('aset-nama').value = a ? a.nama : '';
+  el('aset-kategori').value = a ? (a.kategori || '') : '';
+  const sel = el('aset-kantor');
+  sel.innerHTML = state.kantor.map(function (k) {
+    return '<option value="' + esc(k.id) + '">' + esc(k.nama) + '</option>';
+  }).join('') || '<option value="">Daftar kantor masih kosong</option>';
+  sel.value = a ? a.kantor_asal : (state.kantor[0] ? state.kantor[0].id : '');
+  sel.disabled = !!a;
+  el('aset-kantor-note').textContent = a
+    ? 'Kantor asal bersifat tetap sesuai aturan Strict Home-Base dan tidak bisa diganti.'
+    : 'Kantor asal menentukan lokasi wajib pengembalian dan tidak bisa diganti kemudian.';
+  el('aset-radius').value = (a && a.radius_khusus !== '' && a.radius_khusus !== undefined) ? a.radius_khusus : '';
+  el('modal-aset-error').classList.add('hidden');
+  const btn = el('btn-simpan-aset');
+  btn.textContent = a ? 'Simpan Perubahan' : 'Simpan Aset';
+  btn.onclick = function () { simpanAset(!a, a ? a.id : ''); };
+  bukaModal('modal-aset');
+}
+
+async function simpanAset(isNew, idLama) {
+  const errP = el('modal-aset-error');
+  errP.classList.add('hidden');
+  if (state.kantor.length === 0) { errP.textContent = 'Daftar kantor masih kosong. Tambahkan kantor dulu.'; errP.classList.remove('hidden'); return; }
+  const id = isNew ? el('aset-id').value.trim().toUpperCase() : idLama;
+  const nama = el('aset-nama').value.trim();
+  const kategori = el('aset-kategori').value.trim();
+  const kantorAsal = el('aset-kantor').value;
+  const radiusKhusus = el('aset-radius').value.trim();
+  if (isNew && id === '') { errP.textContent = 'Kode aset wajib diisi.'; errP.classList.remove('hidden'); return; }
+  if (nama === '') { errP.textContent = 'Nama aset wajib diisi.'; errP.classList.remove('hidden'); return; }
+  if (kategori === '') { errP.textContent = 'Kategori wajib diisi.'; errP.classList.remove('hidden'); return; }
+
+  const btn = el('btn-simpan-aset');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Menyimpan...';
+  const res = await api('simpanAset', null, {
+    action: 'simpanAset', pin: state.pin, isNew: isNew,
+    id: id, nama: nama, kategori: kategori, kantorAsal: kantorAsal, radiusKhusus: radiusKhusus
+  });
+  btn.disabled = false;
+  btn.textContent = isNew ? 'Simpan Aset' : 'Simpan Perubahan';
+  if (!res.ok) { errP.textContent = res.error; errP.classList.remove('hidden'); return; }
+  tutupModal('modal-aset');
+  toast(res.pesan);
+  muatDashboard(state.pin);
+}
+
+function bukaModalKantor(k) {
+  el('judul-modal-kantor').textContent = k ? 'Edit Kantor' : 'Kantor Baru';
+  el('kantor-id').value = k ? k.id : '';
+  el('kantor-id').disabled = !!k;
+  el('kantor-id-note').textContent = k ? 'ID tidak bisa diubah.' : 'Pakai singkatan pendek. ID tidak bisa diubah setelah tersimpan.';
+  el('kantor-nama').value = k ? k.nama : '';
+  el('kantor-lat').value = k ? k.lat : '';
+  el('kantor-lng').value = k ? k.lng : '';
+  el('kantor-radius').value = k ? k.radius : 50;
+  el('modal-kantor-error').classList.add('hidden');
+  const btn = el('btn-simpan-kantor');
+  btn.textContent = k ? 'Simpan Perubahan' : 'Simpan Kantor';
+  btn.onclick = function () { simpanKantor(!k, k ? k.id : ''); };
+  bukaModal('modal-kantor');
+}
+
+async function simpanKantor(isNew, idLama) {
+  const errP = el('modal-kantor-error');
+  errP.classList.add('hidden');
+  const id = isNew ? el('kantor-id').value.trim().toUpperCase() : idLama;
+  const nama = el('kantor-nama').value.trim();
+  const lat = el('kantor-lat').value.trim();
+  const lng = el('kantor-lng').value.trim();
+  const radius = el('kantor-radius').value.trim();
+  if (isNew && id === '') { errP.textContent = 'ID kantor wajib diisi.'; errP.classList.remove('hidden'); return; }
+  if (nama === '') { errP.textContent = 'Nama kantor wajib diisi.'; errP.classList.remove('hidden'); return; }
+
+  const btn = el('btn-simpan-kantor');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Menyimpan...';
+  const res = await api('simpanKantor', null, {
+    action: 'simpanKantor', pin: state.pin, isNew: isNew,
+    id: id, nama: nama, lat: lat, lng: lng, radius: radius
+  });
+  btn.disabled = false;
+  btn.textContent = isNew ? 'Simpan Kantor' : 'Simpan Perubahan';
+  if (!res.ok) { errP.textContent = res.error; errP.classList.remove('hidden'); return; }
+  tutupModal('modal-kantor');
+  toast(res.pesan);
+  muatDashboard(state.pin);
+}
+
+function bukaModalOverride(a) {
+  state.overrideTarget = a.id;
+  el('override-info').innerHTML = 'Barang <b>' + esc(a.nama) + '</b> (' + esc(a.id) + ') sedang dipinjam oleh <b>' + esc(a.peminjam || '') + '</b>';
+  el('override-catatan').value = '';
+  el('override-error').classList.add('hidden');
+  bukaModal('modal-override');
+}
+
+async function prosesOverride() {
+  const errP = el('override-error');
+  errP.classList.add('hidden');
+  const btn = el('btn-override-proses');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Memproses...';
+  const res = await api('override', null, {
+    action: 'override', pin: state.pin,
+    assetId: state.overrideTarget, catatan: el('override-catatan').value.trim()
+  });
+  btn.disabled = false;
+  btn.textContent = 'Paksa Kembali';
+  if (!res.ok) { errP.textContent = res.error; errP.classList.remove('hidden'); return; }
+  tutupModal('modal-override');
+  toast(res.pesan);
+  muatDashboard(state.pin);
+}
+
+/* ============================================================
+ * CETAK LABEL QR
+ * ============================================================ */
+
+function kartuLabel(a) {
+  const inisial = (state.namaInstansi || 'UP').replace(/\s+/g, '').substring(0, 2).toUpperCase();
+  const logoHtml = LOGO_URL ? '<img src="' + esc(LOGO_URL) + '" alt="Logo">' : '';
+  const k = kantorById(a.kantor_asal);
+  return '<div class="label-card">' +
+    '<div class="label-head">' +
+    '<div class="slot-logo"><span>' + esc(inisial) + '</span>' + logoHtml + '</div>' +
+    '<div><div class="label-brand">' + esc(state.namaInstansi) + '</div>' +
+    '<div class="label-sub">Label Aset Inventaris</div></div>' +
+    '<div class="label-home">HOME<br>' + esc(k ? k.nama : a.kantor_asal) + '</div>' +
+    '</div>' +
+    '<div class="label-body">' +
+    '<div class="min-w-0"><div class="label-id">' + esc(a.id) + '</div>' +
+    '<div class="label-nama">' + esc(a.nama) + '</div>' +
+    '<div class="label-note">Scan untuk pinjam atau kembalikan ke kantor asal</div></div>' +
+    '<div class="qr-slot" data-qr-id="' + esc(a.id) + '"></div>' +
+    '</div></div>';
+}
+
+function bukaCetak(daftar, judul) {
+  if (!daftar.length) { toast('Tidak ada aset untuk dicetak.', 'kuning'); return; }
+  el('print-grid').innerHTML = daftar.map(kartuLabel).join('');
+  el('print-count').textContent = daftar.length + ' label siap cetak. ' + judul;
+  bukaModal('modal-print');
+  generateQr();
+}
+
+function generateQr() {
+  if (typeof QRCode === 'undefined') {
+    toast('Generator QR belum termuat. Periksa koneksi internet lalu coba lagi.', 'merah');
+    return;
+  }
+  document.querySelectorAll('#print-grid .qr-slot').forEach(function (slot) {
+    if (slot.hasChildNodes()) return;
+    new QRCode(slot, {
+      text: assetUrl(slot.getAttribute('data-qr-id')),
+      width: 320, height: 320,
+      colorDark: '#0f172a', colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  });
+}
+
+/* ============================================================
+ * INISIALISASI
+ * ============================================================ */
+
+function init() {
+  if (DEMO_MODE) el('banner-demo').classList.remove('hidden');
+  applyBrand(state.namaInstansi);
+
+  el('btn-masuk').onclick = cobaMasuk;
+  el('input-pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') cobaMasuk(); });
+
+  el('btn-nav-dash').onclick = bukaDashboard;
+  el('btn-nav-aset').onclick = function () { if (state.aset) bukaAset(state.aset.id); };
+  el('btn-nav-keluar').onclick = function () {
+    state.pin = '';
+    try { sessionStorage.removeItem(KEY_PIN); } catch (err) {}
+    el('dash-content').classList.add('hidden');
+    el('pin-gate').classList.remove('hidden');
+    el('btn-nav-keluar').classList.add('hidden');
+    el('input-pin').value = '';
+    toast('Anda sudah keluar dari dashboard.');
+  };
+
+  el('btn-refresh').onclick = function () {
+    if (state.pin) muatDashboard(state.pin);
+    else toast('Masukkan PIN dulu.', 'kuning');
+  };
+  el('btn-aset-baru').onclick = function () {
+    if (!state.kantor.length) { toast('Tambahkan kantor dulu sebelum menambah aset.', 'kuning'); bukaModalKantor(null); return; }
+    bukaModalAset(null);
+  };
+  el('btn-kantor-baru').onclick = function () { bukaModalKantor(null); };
+  el('btn-cetak-semua').onclick = function () { bukaCetak(filterAset(), 'Sesuai filter kantor aktif.'); };
+  el('filter-kantor').onchange = function () { renderTabelAset(); renderAktif(); };
+  el('cari-aset').addEventListener('input', function () { renderTabelAset(); renderAktif(); });
+
+  el('btn-override-batal').onclick = function () { tutupModal('modal-override'); };
+  el('btn-override-proses').onclick = prosesOverride;
+  el('btn-print-go').onclick = function () { window.print(); };
+
+  document.querySelectorAll('[data-tutup]').forEach(function (b) {
+    b.onclick = function () { tutupModal(b.getAttribute('data-tutup')); };
+  });
+  document.querySelectorAll('.modal').forEach(function (m) {
+    m.addEventListener('click', function (e) { if (e.target === m) m.classList.remove('open'); });
+  });
+
+  setInterval(function () {
+    if (state.pin && !el('dash-content').classList.contains('hidden')) muatDashboard(state.pin, true);
+  }, 60000);
+
+  const url = new URL(location.href);
+  const idAset = url.searchParams.get('asset');
+  if (idAset) {
+    bukaAset(idAset.trim().toUpperCase());
+    return;
+  }
+  tampilView('dash');
+  let pinSimpan = '';
+  try { pinSimpan = sessionStorage.getItem(KEY_PIN) || ''; } catch (err) {}
+  if (pinSimpan) {
+    state.pin = pinSimpan;
+    muatDashboard(pinSimpan);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
