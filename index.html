@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>UPAMI - Sistem Peminjaman Aset</title>
+<title>Sistem Peminjaman Aset</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   tailwind.config = {
@@ -48,8 +48,11 @@
   .spin { display:inline-block; width:1em; height:1em; border:2px solid rgba(255,255,255,.4); border-top-color:#fff; border-radius:9999px; animation:spin .7s linear infinite; }
   .spin-gelap { border-color:#c7d2fe; border-top-color:#4f46e5; }
   @keyframes spin { to { transform:rotate(360deg); } }
-  .durasi-btn.aktif { background:#4f46e5; color:#fff; border-color:#4f46e5; }
   .dot-live { width:9px; height:9px; border-radius:9999px; background:#10b981; box-shadow:0 0 0 0 rgba(16,185,129,.55); animation:pulse 1.6s infinite; display:inline-block; flex-shrink:0; }
+  /* Latar halaman login pengurus. Kalau file gambar tidak ada,
+     gradien ungu di bawahnya yang tampil sebagai cadangan. */
+  body.bg-aktif { background: transparent; }
+  #bg-login { position: fixed; inset: 0; z-index: -10; background: linear-gradient(rgba(15,23,42,.5), rgba(30,27,75,.78)), url('backgroundlogin.jpg') center/cover no-repeat #312e81; }
   .dot-mati { background:#94a3b8; animation:none; box-shadow:none; }
   @keyframes pulse { 0% { box-shadow:0 0 0 0 rgba(16,185,129,.55); } 70% { box-shadow:0 0 0 8px rgba(16,185,129,0); } 100% { box-shadow:0 0 0 0 rgba(16,185,129,0); } }
 
@@ -81,6 +84,7 @@
   }
   @media print {
     body { background:#fff !important; }
+    #bg-login { display:none !important; }
     .no-print { display:none !important; }
     #modal-print { display:none !important; }
     #modal-print.open { display:block !important; position:static !important; inset:auto !important; background:none !important; padding:0 !important; overflow:visible !important; }
@@ -93,6 +97,8 @@
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
 
+<div id="bg-login" class="hidden"></div>
+
 <header class="bg-white border-b border-slate-200 sticky top-0 z-40 no-print">
   <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
     <div class="relative w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 overflow-hidden">
@@ -102,11 +108,10 @@
       <img id="brand-logo" src="" alt="Logo UPAMI" class="absolute inset-0 w-full h-full object-contain bg-white" style="display:none">
     </div>
     <div class="min-w-0">
-      <h1 id="brand-nama" class="font-extrabold text-lg leading-tight tracking-tight text-slate-900">UPAMI</h1>
+      <h1 id="brand-nama" class="font-extrabold text-lg leading-tight tracking-tight text-slate-900">UPSET</h1>
       <p class="text-xs text-slate-500 leading-tight">Sistem Peminjaman Aset</p>
     </div>
     <nav class="ml-auto flex items-center gap-2">
-      <button id="btn-nav-dash" class="btn btn-ghost !py-1.5 !px-3 text-sm hidden">Dashboard</button>
       <button id="btn-nav-aset" class="btn btn-ghost !py-1.5 !px-3 text-sm hidden">Info Barang</button>
       <button id="btn-nav-keluar" class="btn btn-ghost !py-1.5 !px-3 text-sm hidden">Keluar</button>
     </nav>
@@ -115,7 +120,6 @@
 
 <div id="banner-demo" class="hidden no-print bg-amber-50 border-b border-amber-200 px-4 py-2 text-center text-xs sm:text-sm text-amber-800">
   <b>Mode Demo aktif.</b> Data hanya tersimpan di browser ini dan belum terhubung Google Sheets.
-  Isi konstanta <b>API_URL</b> pada skrip dengan URL Web App GAS untuk mode produksi.
 </div>
 
 <main id="view-asset" class="hidden max-w-xl mx-auto px-4 py-6 w-full">
@@ -124,12 +128,14 @@
 
 <main id="view-dash" class="hidden max-w-5xl mx-auto px-4 py-6 w-full space-y-6">
 
-  <section id="pin-gate" class="bg-white border border-slate-200 rounded-2xl p-6 max-w-sm mx-auto mt-6 shadow-sm">
-    <h2 class="font-extrabold text-lg text-slate-900">Dashboard Pengurus</h2>
-    <p class="text-sm text-slate-500 mt-1">Masukkan PIN admin untuk membuka manajemen aset.</p>
+  <section id="pin-gate" class="bg-white/95 backdrop-blur border border-white/60 rounded-2xl p-6 max-w-sm mx-auto mt-10 shadow-xl">
+    <img id="gate-logo" src="" alt="Logo" class="hidden w-28 mx-auto mb-2">
+    <h2 class="font-extrabold text-lg text-slate-900 text-center">Dashboard Pengurus</h2>
+    <p class="text-sm text-slate-500 mt-1 text-center">Masukkan PIN admin untuk membuka manajemen aset.</p>
     <input id="input-pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN admin" class="inp mt-4 text-center tracking-[.4em] font-bold">
     <p id="pin-error" class="hidden text-sm text-red-600 font-semibold mt-2"></p>
     <button id="btn-masuk" class="btn btn-primary w-full mt-4">Masuk Dashboard</button>
+    <p class="text-xs text-slate-400 mt-3 text-center">Halaman ini hanya untuk pengurus. Peminjam cukup membuka halaman aset lewat QR.</p>
   </section>
 
   <div id="dash-content" class="hidden space-y-6">
@@ -336,11 +342,11 @@
  * CUKUP isi baris API_URL saja. Baris DEMO_MODE di bawah jangan
  * diubah sama sekali, biarkan apa adanya.
  * ============================================================ */
-const API_URL = "https://script.google.com/macros/s/AKfycbxtrNVgE2QUAySppzkkQvgCebpM604vYGwEvlEPsNGdmi5Bf1RvlPIlLDaNjBKBS4L5/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbyzyLrIAAYGIgF-_LnSsDISIk_DewtoKWzEuK8HKds4B6-PSD7Sg4X0Jni1bYqDYdBnkg/exec";
 
-// Isi dengan alamat file logo bila sudah ada, misal logo.png
-// yang diunggah bersama file ini. Kosongkan untuk memakai monogram.
-const LOGO_URL = "";
+// File logo dan latar halaman login diletakkan di folder yang sama dengan
+// index.html. Kalau file tidak ada, aplikasi tetap tampil normal pakai monogram.
+const LOGO_URL = "logo_asrama.png";
 
 // JANGAN diubah. Mode Demo aktif otomatis hanya bila API_URL masih kosong.
 const DEMO_MODE = API_URL.trim() === '';
@@ -365,7 +371,8 @@ const state = {
   overrideTarget: null,
   gpsToken: 0,
   lacakAktif: null,
-  mapFitDone: false
+  mapFitDone: false,
+  dataTerakhir: ''
 };
 
 /* ============================================================
@@ -489,18 +496,30 @@ function getGps(opts) {
 
 function applyBrand(nama) {
   if (nama) el('brand-nama').textContent = nama;
+  const img = el('brand-logo');
   if (LOGO_URL) {
-    const img = el('brand-logo');
+    img.onerror = function () {
+      img.style.display = 'none';
+      el('brand-logo-fallback').style.display = 'block';
+    };
     img.src = LOGO_URL;
     img.style.display = 'block';
     el('brand-logo-fallback').style.display = 'none';
+    const gate = el('gate-logo');
+    gate.onerror = function () { gate.classList.add('hidden'); };
+    gate.src = LOGO_URL;
+    gate.classList.remove('hidden');
   }
+}
+
+function bgGate(tampil) {
+  el('bg-login').classList.toggle('hidden', !tampil);
+  document.body.classList.toggle('bg-aktif', tampil);
 }
 
 function tampilView(v) {
   el('view-asset').classList.toggle('hidden', v !== 'asset');
   el('view-dash').classList.toggle('hidden', v !== 'dash');
-  el('btn-nav-dash').classList.toggle('hidden', v === 'dash');
   el('btn-nav-aset').classList.toggle('hidden', v !== 'asset');
   el('btn-nav-keluar').classList.toggle('hidden', !(v === 'dash' && state.pin));
   window.scrollTo(0, 0);
@@ -609,8 +628,11 @@ async function demoApi(action, params, post) {
     if (nama.length < 3) return { ok: false, error: 'Nama peminjam wajib diisi (minimal 3 huruf)' };
     if (wa === '') return { ok: false, error: 'Nomor WhatsApp tidak valid. Gunakan format 08xx atau 628xx' };
     if (!String(post.keperluan || '').trim()) return { ok: false, error: 'Keperluan atau lokasi pakai wajib diisi' };
-    const durasi = Number(post.durasiJam);
-    if (!durasi || durasi <= 0) return { ok: false, error: 'Durasi peminjaman belum dipilih' };
+    const kembaliAt = String(post.kembaliAt || '').trim();
+    const msK = parseWib(kembaliAt);
+    if (msK === null) return { ok: false, error: 'Tanggal dan jam pengembalian belum dipilih' };
+    if (msK < Date.now() + 5 * 60000) return { ok: false, error: 'Jam pengembalian minimal 5 menit dari sekarang' };
+    if (msK > Date.now() + 90 * 24 * 3600000) return { ok: false, error: 'Maksimal peminjaman 90 hari' };
     const a = cariAset(post.assetId);
     if (!a) return { ok: false, error: 'Aset tidak ditemukan' };
     if (a.status !== 'Tersedia') return { ok: false, error: 'Aset sedang tidak tersedia. Status terakhir ' + a.status };
@@ -620,7 +642,7 @@ async function demoApi(action, params, post) {
     a.peminjam = nama;
     a.wa = wa;
     a.waktu_pinjam = fmtTgl(sekarang);
-    a.estimasi = fmtTgl(new Date(sekarang.getTime() + durasi * 3600000));
+    a.estimasi = fmtTgl(new Date(msK));
     if (post.lat !== '' && post.lat !== undefined && post.lat !== null) {
       a.lat_terakhir = Number(post.lat);
       a.lng_terakhir = Number(post.lng);
@@ -771,10 +793,9 @@ async function bukaAset(id) {
       '<div class="w-12 h-12 mx-auto rounded-full bg-red-50 flex items-center justify-center text-red-600 font-extrabold text-xl">!</div>' +
       '<h2 class="font-extrabold text-slate-900 mt-3">Data tidak bisa dibuka</h2>' +
       '<p class="text-sm text-slate-500 mt-1">' + esc(data.error) + '</p>' +
-      '<div class="flex gap-2 mt-4"><button id="btn-coba-lagi" class="btn btn-primary flex-1 text-sm">Coba Lagi</button>' +
-      '<button id="btn-ke-dash" class="btn btn-ghost flex-1 text-sm">Buka Dashboard</button></div></div>';
+      '<button id="btn-coba-lagi" class="btn btn-primary w-full mt-4 text-sm">Coba Lagi</button>' +
+      '<p class="text-xs text-slate-400 mt-3">Pastikan kode QR sesuai aset yang terdaftar. Bila berulang, hubungi pengurus aset.</p></div>';
     el('btn-coba-lagi').onclick = function () { bukaAset(id); };
-    el('btn-ke-dash').onclick = bukaDashboard;
     return;
   }
   state.aset = data.aset;
@@ -1094,20 +1115,25 @@ function renderBypass() {
 
 /* ---------- status Tersedia, form pinjam ---------- */
 
-let durasiDipilih = 24;
+// Batas peminjaman yang boleh dipilih, dihitung dari sekarang
+const MIN_MENIT_KEMBALI = 5;
+const MAKS_HARI_KEMBALI = 90;
+
+function defaultKembali() {
+  const t = fmtTgl(new Date(Date.now() + 4 * 3600000)).split(' ');
+  return { tgl: t[0], jam: t[1] };
+}
+
+function batasTanggal(msAwal) {
+  const d = new Date(msAwal);
+  const p = {};
+  new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
+  return p.year + '-' + p.month + '-' + p.day;
+}
 
 function htmlFormPinjam() {
   const user = simpananUser();
-  const chips = [
-    { jam: 3, label: '3 jam' },
-    { jam: 6, label: '6 jam' },
-    { jam: 24, label: '1 hari' },
-    { jam: 48, label: '2 hari' }
-  ];
-  let tombolDurasi = '';
-  chips.forEach(function (c) {
-    tombolDurasi += '<button type="button" data-jam="' + c.jam + '" class="durasi-btn btn btn-ghost !px-1 text-sm' + (c.jam === durasiDipilih ? ' aktif' : '') + '">' + c.label + '</button>';
-  });
+  const def = defaultKembali();
   return '<div class="rounded-xl bg-white border border-slate-200 p-4 space-y-3">' +
     '<div><label class="lbl" for="f-nama">Nama Lengkap</label>' +
     '<input id="f-nama" class="inp" placeholder="nama yang bisa dihubungi" value="' + esc(user.nama || '') + '"></div>' +
@@ -1116,9 +1142,12 @@ function htmlFormPinjam() {
     '<p class="text-xs text-slate-400 mt-1">Gunakan format 08xx atau 628xx. Nomor ini dipakai pengurus untuk mengingatkan bila batas waktu lewat.</p></div>' +
     '<div><label class="lbl" for="f-keperluan">Keperluan atau Lokasi Pakai</label>' +
     '<input id="f-keperluan" class="inp" placeholder="misal kegiatan sosialisasi di balai desa"></div>' +
-    '<div><span class="lbl">Durasi Peminjaman</span>' +
-    '<div class="grid grid-cols-4 gap-2">' + tombolDurasi + '</div>' +
-    '<p id="estimasi-teks" class="text-xs text-slate-500 mt-2"></p></div>' +
+    '<div><span class="lbl">Dikembalikan Paling Lambat</span>' +
+    '<div class="grid grid-cols-2 gap-2">' +
+    '<input id="f-tgl" type="date" class="inp" value="' + def.tgl + '">' +
+    '<input id="f-jam" type="time" class="inp" value="' + def.jam + '"></div>' +
+    '<p id="estimasi-teks" class="text-xs text-slate-500 mt-2"></p>' +
+    '<p class="text-xs text-slate-400 mt-1">Pilih sendiri tanggal dan jam barang harus kembali. Bebas sesuai kebutuhan, maksimal ' + MAKS_HARI_KEMBALI + ' hari ke depan.</p></div>' +
     '<p id="form-error" class="hidden text-sm text-red-600 font-semibold"></p>' +
     '<button id="btn-pinjam" class="btn btn-primary w-full !py-3 text-base">Konfirmasi Pinjam</button>' +
     '<p class="text-xs text-slate-400 text-center">Saat menekan Konfirmasi Pinjam, posisi GPS perangkat Anda dicatat sebagai titik pengambilan barang.</p></div>';
@@ -1132,16 +1161,23 @@ function simpananUser() {
   }
 }
 
+function bacaKembaliTerpilih() {
+  const tgl = el('f-tgl') ? el('f-tgl').value : '';
+  const jam = el('f-jam') ? el('f-jam').value : '';
+  if (!tgl || !jam) return null;
+  return tgl + ' ' + jam;
+}
+
 function pasangFormPinjam() {
-  el('estimasi-teks').textContent = 'Estimasi kembali ' + fmtWib(fmtTgl(new Date(Date.now() + durasiDipilih * 3600000)));
-  document.querySelectorAll('.durasi-btn').forEach(function (b) {
-    b.onclick = function () {
-      durasiDipilih = Number(b.getAttribute('data-jam'));
-      document.querySelectorAll('.durasi-btn').forEach(function (x) { x.classList.remove('aktif'); });
-      b.classList.add('aktif');
-      el('estimasi-teks').textContent = 'Estimasi kembali ' + fmtWib(fmtTgl(new Date(Date.now() + durasiDipilih * 3600000)));
-    };
-  });
+  el('f-tgl').min = batasTanggal(Date.now());
+  el('f-tgl').max = batasTanggal(Date.now() + MAKS_HARI_KEMBALI * 24 * 3600000);
+  const upd = function () {
+    const v = bacaKembaliTerpilih();
+    el('estimasi-teks').textContent = v ? 'Barang wajib kembali ' + fmtWib(v) + ' WIB' : 'Pilih tanggal dan jam pengembalian.';
+  };
+  el('f-tgl').addEventListener('change', upd);
+  el('f-jam').addEventListener('change', upd);
+  upd();
   el('btn-pinjam').onclick = submitPinjam;
 }
 
@@ -1159,6 +1195,19 @@ async function submitPinjam() {
   if (nama.length < 3) { tampilErrorForm('Nama lengkap wajib diisi, minimal 3 huruf.'); return; }
   if (wa === '') { tampilErrorForm('Nomor WhatsApp tidak valid. Gunakan format 08xx atau 628xx.'); return; }
   if (keperluan === '') { tampilErrorForm('Keperluan atau lokasi pakai wajib diisi.'); return; }
+
+  const kembaliAt = bacaKembaliTerpilih();
+  if (!kembaliAt) { tampilErrorForm('Tanggal dan jam pengembalian wajib dipilih.'); return; }
+  const msKembali = parseWib(kembaliAt);
+  if (msKembali === null) { tampilErrorForm('Tanggal atau jam pengembalian tidak valid.'); return; }
+  if (msKembali < Date.now() + MIN_MENIT_KEMBALI * 60000) {
+    tampilErrorForm('Jam pengembalian minimal ' + MIN_MENIT_KEMBALI + ' menit dari sekarang. Periksa kembali tanggal dan jamnya.');
+    return;
+  }
+  if (msKembali > Date.now() + MAKS_HARI_KEMBALI * 24 * 3600000) {
+    tampilErrorForm('Maksimal peminjaman ' + MAKS_HARI_KEMBALI + ' hari. Pilih tanggal yang lebih dekat.');
+    return;
+  }
 
   const btn = el('btn-pinjam');
   btn.disabled = true;
@@ -1178,7 +1227,7 @@ async function submitPinjam() {
     nama: nama,
     wa: wa,
     keperluan: keperluan,
-    durasiJam: durasiDipilih,
+    kembaliAt: kembaliAt,
     lat: gpsOk ? gps.lat : '',
     lng: gpsOk ? gps.lng : '',
     akurasi: gpsOk ? gps.akurasi : ''
@@ -1224,11 +1273,6 @@ function renderSuksesPinjam(res, gpsOk) {
  * DASHBOARD PENGURUS
  * ============================================================ */
 
-function bukaDashboard() {
-  tampilView('dash');
-  if (state.pin && el('dash-content').classList.contains('hidden')) muatDashboard(state.pin);
-}
-
 async function muatDashboard(pin, senyap) {
   const data = await api('dashboard', { pin: pin });
   if (!data.ok) {
@@ -1239,6 +1283,7 @@ async function muatDashboard(pin, senyap) {
       el('dash-content').classList.add('hidden');
       el('pin-gate').classList.remove('hidden');
       el('btn-nav-keluar').classList.add('hidden');
+      bgGate(true);
       tampilPinError(data.error);
     } else {
       toast(data.error, 'merah');
@@ -1262,7 +1307,7 @@ async function cobaMasuk() {
   try { sessionStorage.setItem(KEY_PIN, pin); } catch (err) {}
   el('input-pin').value = '';
   el('pin-error').classList.add('hidden');
-  terimaData(data);
+  terimaData(data, true);
 }
 
 function tampilPinError(msg) {
@@ -1271,7 +1316,7 @@ function tampilPinError(msg) {
   p.classList.remove('hidden');
 }
 
-function terimaData(data) {
+function terimaData(data, penuh) {
   state.namaInstansi = data.nama_instansi || state.namaInstansi;
   applyBrand(state.namaInstansi);
   state.kantor = data.kantor || [];
@@ -1279,7 +1324,20 @@ function terimaData(data) {
   el('pin-gate').classList.add('hidden');
   el('dash-content').classList.remove('hidden');
   el('btn-nav-keluar').classList.remove('hidden');
-  renderDash();
+  bgGate(false);
+  // Anti lag. Kalau data server sama persis dengan render sebelumnya,
+  // tabel dan peta tidak digambar ulang supaya tidak flicker atau melompat.
+  // KPI dan daftar aktif tetap segar karena berisi hitungan waktu berjalan.
+  const sidang = JSON.stringify([state.asetList, state.kantor]);
+  const berubah = sidang !== state.dataTerakhir;
+  state.dataTerakhir = sidang;
+  hitungKpi();
+  renderAktif();
+  if (penuh || berubah) {
+    isiFilterKantor();
+    renderTabelAset();
+    renderMap();
+  }
 }
 
 function kantorById(id) {
@@ -1424,14 +1482,6 @@ function renderAktif() {
   });
   el('daftar-aktif').innerHTML = html;
   pasangAksiBaris();
-}
-
-function renderDash() {
-  hitungKpi();
-  isiFilterKantor();
-  renderTabelAset();
-  renderAktif();
-  renderMap();
 }
 
 /* ============================================================
@@ -1617,7 +1667,7 @@ async function prosesOverride() {
 
 function kartuLabel(a) {
   const inisial = (state.namaInstansi || 'UP').replace(/\s+/g, '').substring(0, 2).toUpperCase();
-  const logoHtml = LOGO_URL ? '<img src="' + esc(LOGO_URL) + '" alt="Logo">' : '';
+  const logoHtml = LOGO_URL ? '<img src="' + esc(LOGO_URL) + '" alt="Logo" onerror="this.style.display=\'none\'">' : '';
   const k = kantorById(a.kantor_asal);
   return '<div class="label-card">' +
     '<div class="label-head">' +
@@ -1672,15 +1722,16 @@ function init() {
   el('btn-masuk').onclick = cobaMasuk;
   el('input-pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') cobaMasuk(); });
 
-  el('btn-nav-dash').onclick = bukaDashboard;
   el('btn-nav-aset').onclick = function () { if (state.aset) bukaAset(state.aset.id); };
   el('btn-nav-keluar').onclick = function () {
     state.pin = '';
     try { sessionStorage.removeItem(KEY_PIN); } catch (err) {}
+    state.dataTerakhir = '';
     el('dash-content').classList.add('hidden');
     el('pin-gate').classList.remove('hidden');
     el('btn-nav-keluar').classList.add('hidden');
     el('input-pin').value = '';
+    bgGate(true);
     toast('Anda sudah keluar dari dashboard.');
   };
 
@@ -1715,10 +1766,14 @@ function init() {
   const url = new URL(location.href);
   const idAset = url.searchParams.get('asset');
   if (idAset) {
+    // Halaman QR peminjam. Tanpa tombol atau jalur ke dashboard sama sekali.
     bukaAset(idAset.trim().toUpperCase());
     return;
   }
+  // Tanpa parameter berarti halaman login pengurus, satu-satunya pintu
+  // ke dashboard dan tetap terlindungi PIN.
   tampilView('dash');
+  bgGate(true);
   let pinSimpan = '';
   try { pinSimpan = sessionStorage.getItem(KEY_PIN) || ''; } catch (err) {}
   if (pinSimpan) {
